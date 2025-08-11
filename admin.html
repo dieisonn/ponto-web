@@ -26,9 +26,15 @@
     <div class="row">
       <label>Data:</label>
       <input type="date" id="dayPicker" />
+      <label>Colaborador:</label>
+      <select id="userFilter">
+        <option value="">Todos</option>
+      </select>
       <button id="btnLoad">Carregar</button>
+      <button id="btnExport">Exportar CSV</button>
       <button id="btnLogout">Sair</button>
     </div>
+
     <div class="card">
       <table>
         <thead><tr><th>Colaborador</th><th>Email</th><th>Horário</th></tr></thead>
@@ -40,7 +46,7 @@
   <script type="module">
     import { initApp, auth, listPunchesByDayAllUsers, isAdmin } from './app.js';
     await initApp();
-
+    
     const $ = (id) => document.getElementById(id);
     const show = (el, v) => el.classList.toggle('hidden', !v);
 
@@ -73,7 +79,85 @@
       show($('adminArea'), admin);
       if (admin) await load();
     });
+    import { initApp, auth, listPunchesByDayAllUsers, isAdmin } from './app.js';
+await initApp();
+
+const $ = (id) => document.getElementById(id);
+const show = (el, v) => el.classList.toggle('hidden', !v);
+
+// preencher select com colaboradores (a partir da coleção roles)
+async function loadUsersIntoFilter() {
+  const { getDocs, collection } =
+    await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  const { db } = await import('./app.js'); // reaproveita a instância
+  const snap = await getDocs(collection(db, 'roles'));
+  const sel = $('userFilter');
+  sel.innerHTML = '<option value="">Todos</option>';
+  snap.forEach(doc => {
+    const d = doc.data();
+    const label = d.name ? `${d.name} (${d.email || ''})` : (d.email || doc.id);
+    const opt = document.createElement('option');
+    opt.value = doc.id; // uid
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+}
+
+async function load() {
+  const day = $('dayPicker').value;
+  const rows = await listPunchesByDayAllUsers(day);
+  const uidFilter = $('userFilter').value;
+  const filtered = uidFilter ? rows.filter(r => r.uid === uidFilter) : rows;
+  renderTable(filtered);
+}
+
+function renderTable(rows) {
+  const tbody = $('tbody'); tbody.innerHTML = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const d = r.ts?.toDate ? r.ts.toDate() : new Date(r.ts);
+    tr.innerHTML = `
+      <td>${r.name || ''}</td>
+      <td>${r.email || ''}</td>
+      <td>${d.toLocaleString('pt-BR')} ${r.type ? `(${r.type})` : ''}${r.note ? ` — ${r.note}` : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// eventos
+$('btnLoad').onclick = load;
+$('btnExport').onclick = exportCSV;
+
+// gate admin
+const { onAuthStateChanged } =
+  await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
+  const admin = await isAdmin(user.uid);
+  $('gateStatus').textContent = admin ? 'Admin OK' : 'Sem permissão';
+  show($('adminArea'), admin);
+  if (admin) { await loadUsersIntoFilter(); await load(); }
+});
+
+function exportCSV() {
+  const table = document.querySelector('table');
+  const rows = Array.from(table.querySelectorAll('tr'));
+  const data = rows.map(tr => Array.from(tr.querySelectorAll('th,td'))
+                  .map(td => `"${(td.textContent || '').replace(/"/g, '""')}"`)
+                  .join(','));
+  const csv = data.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  const day = document.getElementById('dayPicker').value.replaceAll('-', '');
+  a.href = URL.createObjectURL(blob);
+  a.download = `pontos_${day}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
   </script>
 </body>
 </html>
+
 
