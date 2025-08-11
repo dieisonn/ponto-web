@@ -85,16 +85,18 @@
     };
 
     document.getElementById('btnPunch').onclick = async () => {
-      document.getElementById('status').textContent = 'Registrando...';
-      try {
-        await addPunch();
-        document.getElementById('status').textContent = 'Ponto registrado!';
-      } catch (e) {
-        document.getElementById('status').textContent = 'Erro: ' + e.message;
-      }
-      await refreshPunches();
-    };
-
+  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  const note = document.getElementById('note').value || '';
+  document.getElementById('status').textContent = 'Registrando...';
+  try {
+    await addPunch(note, tipo); // agora envia também tipo
+    document.getElementById('status').textContent = 'Ponto registrado!';
+    document.getElementById('note').value = '';
+  } catch (e) {
+    document.getElementById('status').textContent = 'Erro: ' + e.message;
+  }
+  await refreshPunches();
+};
     async function refreshPunches() {
       const punches = await listRecentPunches(10);
       const ul = document.getElementById('punchList');
@@ -123,5 +125,6 @@
   </script>
 </body>
 </html>
+
 
 
