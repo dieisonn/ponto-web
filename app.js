@@ -63,7 +63,7 @@ function yyyymm(d) {
   return `${y}${m}`;
 }
 
-export async function addPunch(note = '') {
+export async function addPunch(note = '', tipo = 'entrada') {
   await initApp();
   const { serverTimestamp, collection, doc, setDoc } =
     await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -71,7 +71,13 @@ export async function addPunch(note = '') {
   if (!user) throw new Error('Não autenticado');
   const period = yyyymm(new Date());
   const ref = doc(collection(db, 'punches', user.uid, period));
-  await setDoc(ref, { ts: serverTimestamp(), email: user.email || '', uid: user.uid, note });
+  await setDoc(ref, {
+    ts: serverTimestamp(),
+    email: user.email || '',
+    uid: user.uid,
+    note,
+    type: tipo   // "entrada" | "saida"
+  });
 }
 
 export async function listRecentPunches(limitN = 10) {
@@ -128,3 +134,4 @@ export async function listPunchesByDayAllUsers(dayISO) {
   });
   return rows;
 }
+
