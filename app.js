@@ -91,15 +91,18 @@ export async function listPunchesByDayAllUsers(dayISO) {
   await initApp();
   const { collection, getDocs, query, orderBy, limit } =
     await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+
+  // pega todos os roles (admin + users)
+  const { getDocs: g2, collection: c2 } =
+    await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  const rolesSnap = await g2(c2(db, 'roles'));
+  const rolesMap = {};
+  rolesSnap.forEach(doc => { rolesMap[doc.id] = doc.data(); });
+
   const months = [yyyymm(new Date()), yyyymm(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1))];
   const rows = [];
 
-  const { getDocs: g2, collection: c2 } =
-    await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-
-  const rolesSnap = await g2(c2(db, 'roles'));
-  for (const r of rolesSnap.docs) {
-    const uid = r.id;
+  for (const uid of Object.keys(rolesMap)) {
     for (const period of months) {
       const userCol = c2(db, 'punches', uid, period);
       const q = query(userCol, orderBy('ts', 'desc'), limit(200));
@@ -107,12 +110,18 @@ export async function listPunchesByDayAllUsers(dayISO) {
       for (const d of snap.docs) {
         const data = d.data();
         const dt = data.ts?.toDate ? data.ts.toDate() : new Date(data.ts);
-        if (dt.toISOString().slice(0, 10) === dayISO) rows.push(data);
+        if (dt.toISOString().slice(0,10) === dayISO) {
+          rows.push({
+            ...data,
+            email: data.email || rolesMap[uid]?.email || '',
+            name: rolesMap[uid]?.name || ''
+          });
+        }
       }
     }
   }
 
-  rows.sort((a, b) => {
+  rows.sort((a,b) => {
     const ta = a.ts?.toMillis ? a.ts.toMillis() : (new Date(a.ts)).getTime();
     const tb = b.ts?.toMillis ? b.ts.toMillis() : (new Date(b.ts)).getTime();
     return ta - tb;
