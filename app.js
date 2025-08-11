@@ -134,4 +134,30 @@ export async function listPunchesByDayAllUsers(dayISO) {
   });
   return rows;
 }
+export async function getLastPunch() {
+  await initApp();
+  const { collection, query, orderBy, limit, getDocs } =
+    await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  const user = auth.currentUser;
+  if (!user) return null;
+  const period = yyyymm(new Date());
+  const col = collection(db, 'punches', user.uid, period);
+  const q = query(col, orderBy('ts', 'desc'), limit(1));
+  const snap = await getDocs(q);
+  return snap.docs[0]?.data() || null;
+}
 
+export async function addPunchSmart(tipo, note = '') {
+  await initApp();
+  // evita duplicar (ex.: clicar 2x “Entrada”)
+  const last = await getLastPunch();
+  if (last && last.type === tipo) {
+    // se o último for igual e tiver menos de 60s, bloqueia
+    const lastMs = last.ts?.toMillis ? last.ts.toMillis() : (new Date(last.ts)).getTime();
+    if (Date.now() - lastMs < 60_000) {
+      throw new Error('Último registro já foi "' + tipo + '" há menos de 1 minuto.');
+    }
+  }
+  // grava usando a função existente
+  return addPunch(note, tipo);
+}
