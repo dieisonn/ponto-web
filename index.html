@@ -17,6 +17,7 @@
 <body>
   <h1>Marcação de Ponto</h1>
 
+  <!-- Área deslogado -->
   <div id="loggedOut" class="card">
     <h3>Entrar</h3>
     <label>Email</label>
@@ -30,26 +31,25 @@
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
+  <!-- Área logado -->
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
-  <div class="row">
-  <button id="btnEntrada">Entrada</button>
-  <button id="btnSaida">Saída</button>
-</div>
-<label style="margin-top:8px">Observação (opcional)</label>
-<input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
-<p id="status"></p>
-<label>Observação (opcional)</label>
-<input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
+
     <div class="row">
-      <button id="btnPunch">Bater ponto</button>
-      <button id="btnLogout">Sair</button>
+      <button id="btnEntrada">Entrada</button>
+      <button id="btnSaida">Saída</button>
+      <button id="btnLogout" style="margin-left:auto">Sair</button>
     </div>
+
+    <label style="margin-top:8px">Observação (opcional)</label>
+    <input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
     <p id="status"></p>
+
     <div class="card">
       <h3>Últimos registros</h3>
       <ul id="punchList"></ul>
     </div>
+
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
 <script type="module">
@@ -126,6 +126,7 @@
 
 </body>
 </html>
+
 
 
 
