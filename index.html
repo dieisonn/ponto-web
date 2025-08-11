@@ -33,6 +33,16 @@
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
     <div class="row">
+  <label style="margin-right:8px">
+    <input type="radio" name="tipo" value="entrada" checked /> Entrada
+  </label>
+  <label>
+    <input type="radio" name="tipo" value="saida" /> Saída
+  </label>
+</div>
+<label>Observação (opcional)</label>
+<input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
+    <div class="row">
       <button id="btnPunch">Bater ponto</button>
       <button id="btnLogout">Sair</button>
     </div>
@@ -113,4 +123,5 @@
   </script>
 </body>
 </html>
+
 
