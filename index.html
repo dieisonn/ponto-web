@@ -47,7 +47,7 @@
   <script type="module">
     import { initApp, auth, onUserChanged, ensureRoleDoc, addPunch, listRecentPunches, isAdmin } from './app.js';
 
-    initApp();
+    await initApp();
 
     const $ = (id) => document.getElementById(id);
     const show = (el, v) => el.classList.toggle('hidden', !v);
@@ -113,3 +113,4 @@
   </script>
 </body>
 </html>
+
