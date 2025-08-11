@@ -32,14 +32,13 @@
 
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
-    <div class="row">
-  <label style="margin-right:8px">
-    <input type="radio" name="tipo" value="entrada" checked /> Entrada
-  </label>
-  <label>
-    <input type="radio" name="tipo" value="saida" /> Saída
-  </label>
+  <div class="row">
+  <button id="btnEntrada">Entrada</button>
+  <button id="btnSaida">Saída</button>
 </div>
+<label style="margin-top:8px">Observação (opcional)</label>
+<input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
+<p id="status"></p>
 <label>Observação (opcional)</label>
 <input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
     <div class="row">
@@ -53,78 +52,81 @@
     </div>
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
+<script type="module">
+  import {
+    initApp,
+    auth,
+    onUserChanged,
+    ensureRoleDoc,
+    addPunchSmart,
+    listRecentPunches,
+    isAdmin
+  } from './app.js';
 
-  <script type="module">
-    import { initApp, auth, onUserChanged, ensureRoleDoc, addPunch, listRecentPunches, isAdmin } from './app.js';
+  // garante Firebase pronto
+  await initApp();
 
-    await initApp();
+  const $   = (id) => document.getElementById(id);
+  const show = (el, v) => el.classList.toggle('hidden', !v);
 
-    const $ = (id) => document.getElementById(id);
-    const show = (el, v) => el.classList.toggle('hidden', !v);
-
-    document.getElementById('btnLogin').onclick = async () => {
-      document.getElementById('msg').textContent = '';
-      const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      try {
-        await signInWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value);
-      } catch (e) { document.getElementById('msg').textContent = e.message; }
-    };
-
-    document.getElementById('btnRegister').onclick = async () => {
-      document.getElementById('msg').textContent = '';
-      const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value);
-        await ensureRoleDoc(cred.user.uid); // cria role 'user'
-      } catch (e) { document.getElementById('msg').textContent = e.message; }
-    };
-
-    document.getElementById('btnLogout').onclick = async () => {
-      const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      await signOut(auth);
-    };
-
-    document.getElementById('btnPunch').onclick = async () => {
-  const tipo = document.querySelector('input[name="tipo"]:checked').value;
-  const note = document.getElementById('note').value || '';
-  document.getElementById('status').textContent = 'Registrando...';
-  try {
-    await addPunch(note, tipo); // agora envia também tipo
-    document.getElementById('status').textContent = 'Ponto registrado!';
-    document.getElementById('note').value = '';
-  } catch (e) {
-    document.getElementById('status').textContent = 'Erro: ' + e.message;
-  }
-  await refreshPunches();
-};
-    async function refreshPunches() {
-      const punches = await listRecentPunches(10);
-      const ul = document.getElementById('punchList');
-      ul.innerHTML = '';
-      punches.forEach(p => {
-        const li = document.createElement('li');
-        const d = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
-        li.textContent = d.toLocaleString('pt-BR');
-        ul.appendChild(li);
-      });
+  // -------- batida --------
+  async function doPunch(tipo) {
+    const note = $('note')?.value || '';
+    $('status').textContent = 'Registrando...';
+    try {
+      await addPunchSmart(tipo, note);     // salva com type: 'entrada' | 'saida'
+      $('status').textContent = `Ponto ${tipo} registrado!`;
+      if ($('note')) $('note').value = '';
+    } catch (e) {
+      $('status').textContent = 'Erro: ' + (e?.message || e);
     }
+    await refreshPunches();
+  }
 
-    onUserChanged(async (user) => {
-      show(document.getElementById('loggedOut'), !user);
-      show(document.getElementById('loggedIn'), !!user);
-      document.getElementById('who').textContent = user?.email || '';
-      document.getElementById('msg').textContent = '';
-      document.getElementById('status').textContent = '';
-      if (user) {
-        await ensureRoleDoc(user.uid);
-        await refreshPunches();
-        const admin = await isAdmin(user.uid);
-        show(document.getElementById('adminLink'), admin);
-      }
-    });
-  </script>
+  // associa botões
+  $('btnEntrada')?.addEventListener('click', () => doPunch('entrada'));
+  $('btnSaida')?.addEventListener('click',   () => doPunch('saida'));
+
+  // -------- lista últimos registros --------
+  async function refreshPunches() {
+    const punches = await listRecentPunches(10);
+    const ul = $('punchList');
+    if (!ul) return;
+    ul.innerHTML = '';
+    for (const p of punches) {
+      const d = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
+      const li = document.createElement('li');
+      li.textContent = `${d.toLocaleString('pt-BR')}${p.type ? ` (${p.type})` : ''}${p.note ? ' — ' + p.note : ''}`;
+      ul.appendChild(li);
+    }
+  }
+
+  // -------- ciclo de login --------
+  onUserChanged(async (user) => {
+    show($('loggedOut'), !user);
+    show($('loggedIn'),  !!user);
+    $('who').textContent = user?.email || '';
+    $('msg').textContent = '';
+    $('status').textContent = '';
+    if (user) {
+      await ensureRoleDoc(user.uid);           // garante role 'user' por padrão
+      await refreshPunches();
+      const admin = await isAdmin(user.uid);
+      show($('adminLink'), admin);
+    }
+  });
+
+  // (opcional) atalhos de teclado: E = entrada, S = saída
+  window.addEventListener('keydown', (e) => {
+    if (!auth.currentUser) return;
+    if (e.key.toLowerCase() === 'e') doPunch('entrada');
+    if (e.key.toLowerCase() === 's') doPunch('saida');
+  });
+</script>
+
 </body>
 </html>
+
 
 
 
