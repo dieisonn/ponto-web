@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Marcação de Ponto</title>
+  <style>
+    body { font-family: system-ui, Arial; max-width: 720px; margin: 24px auto; padding: 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; }
+    input { padding: 8px; border-radius: 8px; border:1px solid #ccc; width: 100%; }
+    label { display:block; margin:8px 0 4px; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <h1>Marcação de Ponto</h1>
+
+  <div id="loggedOut" class="card">
+    <h3>Entrar</h3>
+    <label>Email</label>
+    <input id="email" type="email" required />
+    <label>Senha</label>
+    <input id="password" type="password" required />
+    <div class="row">
+      <button id="btnLogin">Login</button>
+      <button id="btnRegister">Criar conta</button>
+    </div>
+    <p id="msg" style="color:#b00020;"></p>
+  </div>
+
+  <div id="loggedIn" class="card hidden">
+    <p>Olá, <b id="who"></b></p>
+    <div class="row">
+      <button id="btnPunch">Bater ponto</button>
+      <button id="btnLogout">Sair</button>
+    </div>
+    <p id="status"></p>
+    <div class="card">
+      <h3>Últimos registros</h3>
+      <ul id="punchList"></ul>
+    </div>
+    <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
+  </div>
+
+  <script type="module">
+    import { initApp, auth, onUserChanged, ensureRoleDoc, addPunch, listRecentPunches, isAdmin } from './app.js';
+
+    initApp();
+
+    const $ = (id) => document.getElementById(id);
+    const show = (el, v) => el.classList.toggle('hidden', !v);
+
+    document.getElementById('btnLogin').onclick = async () => {
+      document.getElementById('msg').textContent = '';
+      const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      try {
+        await signInWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value);
+      } catch (e) { document.getElementById('msg').textContent = e.message; }
+    };
+
+    document.getElementById('btnRegister').onclick = async () => {
+      document.getElementById('msg').textContent = '';
+      const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value);
+        await ensureRoleDoc(cred.user.uid); // cria role 'user'
+      } catch (e) { document.getElementById('msg').textContent = e.message; }
+    };
+
+    document.getElementById('btnLogout').onclick = async () => {
+      const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await signOut(auth);
+    };
+
+    document.getElementById('btnPunch').onclick = async () => {
+      document.getElementById('status').textContent = 'Registrando...';
+      try {
+        await addPunch();
+        document.getElementById('status').textContent = 'Ponto registrado!';
+      } catch (e) {
+        document.getElementById('status').textContent = 'Erro: ' + e.message;
+      }
+      await refreshPunches();
+    };
+
+    async function refreshPunches() {
+      const punches = await listRecentPunches(10);
+      const ul = document.getElementById('punchList');
+      ul.innerHTML = '';
+      punches.forEach(p => {
+        const li = document.createElement('li');
+        const d = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
+        li.textContent = d.toLocaleString('pt-BR');
+        ul.appendChild(li);
+      });
+    }
+
+    onUserChanged(async (user) => {
+      show(document.getElementById('loggedOut'), !user);
+      show(document.getElementById('loggedIn'), !!user);
+      document.getElementById('who').textContent = user?.email || '';
+      document.getElementById('msg').textContent = '';
+      document.getElementById('status').textContent = '';
+      if (user) {
+        await ensureRoleDoc(user.uid);
+        await refreshPunches();
+        const admin = await isAdmin(user.uid);
+        show(document.getElementById('adminLink'), admin);
+      }
+    });
+  </script>
+</body>
+</html>

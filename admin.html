@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Painel Admin - Ponto</title>
+  <style>
+    body { font-family: system-ui, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border:1px solid #ddd; padding:8px; }
+    th { background:#f7f7f7; text-align:left; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 8px 0; }
+    .hidden { display:none; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>Painel do Administrador</h1>
+  <p><a href="index.html">← Voltar</a></p>
+
+  <div class="card">
+    <p>Status: <b id="gateStatus">Verificando...</b></p>
+  </div>
+
+  <div id="adminArea" class="hidden">
+    <div class="row">
+      <label>Data:</label>
+      <input type="date" id="dayPicker" />
+      <button id="btnLoad">Carregar</button>
+      <button id="btnLogout">Sair</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Colaborador</th><th>Email</th><th>Horário</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initApp, auth, listPunchesByDayAllUsers, isAdmin } from './app.js';
+    initApp();
+
+    const $ = (id) => document.getElementById(id);
+    const show = (el, v) => el.classList.toggle('hidden', !v);
+
+    $('dayPicker').value = new Date().toISOString().slice(0,10);
+
+    $('btnLogout').onclick = async () => {
+      const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await signOut(auth);
+      location.href = 'index.html';
+    };
+
+    $('btnLoad').onclick = async () => { await load(); };
+
+    async function load() {
+      const rows = await listPunchesByDayAllUsers($('dayPicker').value);
+      const tbody = $('tbody'); tbody.innerHTML = '';
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        const d = r.ts?.toDate ? r.ts.toDate() : new Date(r.ts);
+        tr.innerHTML = `<td>${r.name || ''}</td><td>${r.email || ''}</td><td>${d.toLocaleString('pt-BR')}</td>`;
+        tbody.appendChild(tr);
+      }
+    }
+
+    const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
+      const admin = await isAdmin(user.uid);
+      $('gateStatus').textContent = admin ? 'Admin OK' : 'Sem permissão';
+      show($('adminArea'), admin);
+      if (admin) await load();
+    });
+  </script>
+</body>
+</html>
