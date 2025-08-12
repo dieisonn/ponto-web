@@ -22,7 +22,6 @@
 <body>
   <h1>Marcação de Ponto</h1>
 
-  <!-- ===== deslogado ===== -->
   <div id="loggedOut" class="card">
     <h3>Entrar</h3>
     <label>Email</label>
@@ -36,23 +35,15 @@
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
-  <!-- ===== logado (colaborador) ===== -->
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
 
-    <!-- Batida -->
     <div id="punchCard" class="card">
       <h3>Bater ponto</h3>
       <div class="row">
-        <label>Data:
-          <input type="date" id="pDate">
-        </label>
-        <label>Hora:
-          <input type="time" id="pTime" step="60">
-        </label>
-        <label>Tipo (detectado):
-          <div><b id="autoType">Entrada</b></div>
-        </label>
+        <label>Data:<input type="date" id="pDate"></label>
+        <label>Hora:<input type="time" id="pTime" step="60"></label>
+        <label>Tipo (detectado):<div><b id="autoType">Entrada</b></div></label>
       </div>
       <label>Motivo/Observação</label>
       <input id="note" type="text" placeholder="Opcional" />
@@ -64,17 +55,14 @@
       <small class="muted">A localização é obrigatória e validada pelo raio dos locais cadastrados.</small>
     </div>
 
-    <!-- Total do dia -->
     <p id="dailyTotal" style="font-weight:bold"></p>
 
-    <!-- Histórico de hoje -->
     <div id="todayCard" class="card">
       <h3>Registros de hoje</h3>
       <p id="parityMsg" class="warn hidden">Atenção: Entradas e Saídas estão em quantidade diferente.</p>
       <ul id="todayList" class="clean"></ul>
     </div>
 
-    <!-- Último registro + ações -->
     <div id="lastCard" class="card">
       <h3>Último registro</h3>
       <ul id="punchList"></ul>
@@ -85,7 +73,6 @@
       <small id="lastMeta" class="muted"></small>
     </div>
 
-    <!-- Solicitar ajuste (com templates de motivo) -->
     <div id="adjustCard" class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
@@ -119,7 +106,6 @@
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
 
-  <!-- ===== mensagem para administradores ===== -->
   <div id="adminOnly" class="card hidden">
     <p>Você é administrador. Use o <a href="admin.html">painel do administrador</a> para gerenciar pontos, locais e solicitações.</p>
   </div>
@@ -136,17 +122,15 @@
     const $ = (id) => document.getElementById(id);
     const show = (el,v) => { if (el) el.classList.toggle('hidden', !v); };
 
-    // Preenche data/hora com "agora" ao carregar (o usuário pode editar se quiser)
+    // preenche com "agora"
     function setNow() {
       const now = new Date();
       $('pDate').value = now.toISOString().slice(0,10);
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      $('pTime').value = hh + ':' + mm;
+      $('pTime').value = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
     }
     setNow();
 
-    // detecta próximo tipo do dia escolhido
+    // detecta próximo tipo
     let nextType = 'entrada';
     async function computeNextType() {
       if (!auth.currentUser) return;
@@ -199,7 +183,7 @@
       });
     }
 
-    // Registrar ponto
+    // registrar
     $('btnPunchSave').onclick = async () => {
       const dateISO = $('pDate').value;
       const time = $('pTime').value;
@@ -210,19 +194,22 @@
       let geo;
       try { geo = await getGeoOrFail(); }
       catch (err) {
-        const msg = (err?.code===1) ? 'Permita o acesso à localização.' :
-                    (err?.code===3) ? 'Tempo excedido ao obter localização.' :
-                    'Não foi possível obter localização.';
-        $('status').textContent = msg; return;
+        $('status').textContent = (err?.code===1) ? 'Permita o acesso à localização.' :
+                                  (err?.code===3) ? 'Tempo excedido ao obter localização.' :
+                                  'Não foi possível obter localização.';
+        return;
       }
+
+      // precisão mínima do GPS
+      const acc = geo.accuracy ?? 9999;
+      if (acc > 100) { $('status').textContent = 'Sinal de GPS impreciso (tente novamente mais perto de uma janela).'; return; }
 
       let site = null;
       try { site = await nearestSite(geo); } catch (_) {}
       if (!site) { $('status').textContent = 'Fora das áreas válidas para batida.'; return; }
 
-      const hh = parseInt(time.split(':')[0],10) || 0;
-      const mm = parseInt(time.split(':')[1],10) || 0;
-      const at = new Date(dateISO); at.setHours(hh, mm, 0, 0);
+      const [hh,mm] = time.split(':').map(x=>parseInt(x||'0',10));
+      const at = new Date(dateISO); at.setHours(hh||0, mm||0, 0, 0);
 
       $('status').textContent = 'Registrando ponto...';
       try {
@@ -234,12 +221,11 @@
         await computeNextType();
         try { await updateDailyTotal(); } catch (e) {}
       } catch (e) {
-        const msg = (e?.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e);
-        $('status').textContent = 'Erro: ' + msg;
+        $('status').textContent = 'Erro: ' + ((e?.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e));
       }
     };
 
-    // Último registro
+    // último
     let lastDoc = null;
     async function refreshLast() {
       const list = await listRecentPunchesRaw(1);
@@ -250,12 +236,13 @@
       }
       const d = list[0]; lastDoc = d;
       const when = (d.at?.toDate ? d.at.toDate() : (d.ts?.toDate ? d.ts.toDate() : new Date()));
-      const tipo = d.type ? ' (' + d.type + ')' : '';
-      const obs  = d.note ? ' — ' + d.note : '';
-      li.textContent = when.toLocaleString('pt-BR') + tipo + obs;
+      li.textContent = when.toLocaleString('pt-BR') + (d.type ? ' ('+d.type+')':'') + (d.note ? ' — '+d.note : '');
       ul.appendChild(li);
       $('lastMeta').textContent = d.siteId ? ('Local: ' + (d.siteName || d.siteId) + ' • Dist: ' + Math.round(d.distM || 0) + ' m') : '';
     }
+
+    // atalhos de ajuste/exclusão
+    let selectedTargetPath = null;
     $('btnAdjFromLast').onclick = () => {
       if (!lastDoc) return;
       const when = lastDoc.at?.toDate ? lastDoc.at.toDate() : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
@@ -274,8 +261,7 @@
       } catch (e) { alert('Erro: ' + (e?.message || e)); }
     };
 
-    // Histórico do dia
-    let selectedTargetPath = null;
+    // histórico do dia
     async function refreshToday(){
       if (!auth.currentUser) return;
       const today = new Date().toISOString().slice(0,10);
@@ -327,7 +313,7 @@
       });
     }
 
-    // motivo template -> preenche o input
+    // motivos templates
     $('adjReasonTpl').addEventListener('change', (e)=>{
       if (!e.target.value) return;
       const cur = $('adjReason').value.trim();
@@ -335,7 +321,6 @@
       e.target.value = '';
     });
 
-    // enviar ajuste
     $('btnAdjSend').onclick = async () => {
       try {
         const payload = {
@@ -363,7 +348,6 @@
       el.textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
     }
 
-    // ciclo de login + admins não batem ponto
     onUserChanged(async (user) => {
       const isLogged = !!user;
       show($('loggedOut'), !isLogged);
