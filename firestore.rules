@@ -2,63 +2,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- helpers ---
+    /* ===== helpers ===== */
     function isAdmin(uid) {
       return get(/databases/$(database)/documents/roles/$(uid)).data.role == 'admin';
     }
-    function sq(x) { return x * x; }
 
-    // Verifica se (lat,lon) está dentro do raio do siteId (usa coeficientes do próprio site)
-    function insideRadius(siteId, lat, lon) {
-      // primeiro garante que o site existe
-      return exists(/databases/$(database)/documents/sites/$(siteId)) &&
-        (
-          // distância ao quadrado em metros (aproximação plana com mPerDegLat/Lon)
-          sq( (lon - get(/databases/$(database)/documents/sites/$(siteId)).data.lon)
-               * get(/databases/$(database)/documents/sites/$(siteId)).data.mPerDegLon )
-        + sq( (lat - get(/databases/$(database)/documents/sites/$(siteId)).data.lat)
-               * get(/databases/$(database)/documents/sites/$(siteId)).data.mPerDegLat )
-        )
-        <=
-        sq(
-          get(/databases/$(database)/documents/sites/$(siteId)).data.radiusM
-          + ( get(/databases/$(database)/documents/sites/$(siteId)).data.toleranceM == null
-                ? 0
-                : get(/databases/$(database)/documents/sites/$(siteId)).data.toleranceM )
-        );
-    }
-
-    // ---------- ROLES ----------
+    /* ===== ROLES ===== */
     match /roles/{uid} {
       allow read:  if request.auth != null && (request.auth.uid == uid || isAdmin(request.auth.uid));
+      // só admin altera perfis
       allow write: if request.auth != null && isAdmin(request.auth.uid);
     }
 
-    // ---------- SITES (geofence) ----------
-    match /sites/{siteId} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
-    }
-
-    // ---------- PUNCHES ----------
-    // Exige geo + siteId e valida se está dentro do raio
+    /* ===== PUNCHES (SEM GEO) =====
+       Usuário pode ler os seus pontos e escrever nos seus próprios subpaths.
+       Admin pode ler e escrever em qualquer um. */
     match /punches/{uid}/{period}/{docId} {
-      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin(request.auth.uid));
-
-      allow write: if request.auth != null
-                   && (request.auth.uid == uid || isAdmin(request.auth.uid))
-                   && request.resource.data.geo is map
-                   && request.resource.data.siteId is string
-                   && request.resource.data.geo.lat is number
-                   && request.resource.data.geo.lon is number
-                   && insideRadius(
-                        request.resource.data.siteId,
-                        request.resource.data.geo.lat,
-                        request.resource.data.geo.lon
-                      );
+      allow read:   if request.auth != null && (request.auth.uid == uid || isAdmin(request.auth.uid));
+      allow create, update, delete:
+                    if request.auth != null && (request.auth.uid == uid || isAdmin(request.auth.uid));
     }
 
-    // ---------- PEDIDOS DE AJUSTE ----------
+    /* ===== AJUSTES ===== */
     match /adjust_requests/{id} {
       allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
       allow read:   if request.auth != null && (isAdmin(request.auth.uid) || request.auth.uid == resource.data.uid);
