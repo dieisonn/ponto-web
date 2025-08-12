@@ -241,10 +241,32 @@ function parsePunchPath(path){
 
 export async function listPendingAdjustments(){
   await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const q=fs.query(fs.collection(db,'adjust_requests'), fs.where('status','==','pending'), fs.orderBy('createdAt','asc'));
-  const s=await fs.getDocs(q);
-  return s.docs.map(d=>({ id:d.id, ...d.data() }));
+  const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  try {
+    const q = fs.query(
+      fs.collection(db, 'adjust_requests'),
+      fs.where('status', '==', 'pending'),
+      fs.orderBy('createdAt', 'asc')
+    );
+    const s = await fs.getDocs(q);
+    return s.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    if (e.code === 'failed-precondition') {
+      const q = fs.query(
+        fs.collection(db, 'adjust_requests'),
+        fs.where('status', '==', 'pending')
+      );
+      const s = await fs.getDocs(q);
+      return s.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => {
+          const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+          const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+          return ta - tb;
+        });
+    }
+    throw e;
+  }
 }
 
 export async function approveAdjustment(req, adminUid){
@@ -316,3 +338,4 @@ export async function rejectAdjustment(reqId, adminUid, reason){
     status:'rejected', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid, adminNote: reason||''
   });
 }
+
