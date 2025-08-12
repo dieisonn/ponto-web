@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Painel Admin - Ponto</title>
   <style>
-    /* Layout simples do painel do admin */
     body { font-family: system-ui, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border:1px solid #ddd; padding:8px; }
@@ -13,6 +12,7 @@
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 8px 0; }
     .hidden { display:none; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    small.muted { color:#777; }
   </style>
 </head>
 <body>
@@ -41,7 +41,6 @@
       <button id="btnMonthCsv">Exportar CSV (mês)</button>
     </div>
 
-    <!-- Tabela reaproveitada para dia e mês -->
     <div class="card">
       <table>
         <thead><tr><th>Colaborador</th><th>Email</th><th>Horário / Total</th></tr></thead>
@@ -49,181 +48,201 @@
       </table>
     </div>
 
+    <!-- Gestão de Locais (geofence) -->
+    <div class="card">
+      <h3>Locais permitidos (geofence)</h3>
+      <div class="row">
+        <label>Nome: <input id="siteName" type="text" placeholder="Ex.: Escritório" /></label>
+        <label>Lat: <input id="siteLat" type="number" step="0.000001" /></label>
+        <label>Lon: <input id="siteLon" type="number" step="0.000001" /></label>
+        <label>Raio (m): <input id="siteRadius" type="number" step="1" value="200" /></label>
+      </div>
+      <div class="row">
+        <button id="btnSiteHere">Usar minha posição</button>
+        <button id="btnSiteAdd">Adicionar local</button>
+      </div>
+      <small class="muted">Os colaboradores só podem bater ponto dentro do raio destes locais.</small>
+
+      <table style="margin-top:12px">
+        <thead><tr><th>Nome</th><th>Lat</th><th>Lon</th><th>Raio (m)</th><th>Status</th></tr></thead>
+        <tbody id="tbodySites"></tbody>
+      </table>
+    </div>
+
     <!-- Pedidos de ajuste -->
     <div class="card">
       <h3>Pedidos de ajuste</h3>
       <table>
-        <thead><tr><th>Colaborador</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
         <tbody id="tbodyAdj"></tbody>
       </table>
     </div>
   </div>
 
   <script type="module">
-    /* Importa tudo como "core" para evitar colisões */
     import * as core from './app.js';
     await core.initApp();
 
-    /* Desestrutura o que vamos usar */
     const {
       auth, db, isAdmin, listPunchesByDayAllUsers,
       listPunchesByMonthAllUsers, computeDailyMs, msToHHMM,
-      listPendingAdjustments, approveAdjustment, rejectAdjustment
+      listPendingAdjustments, approveAdjustment, rejectAdjustment,
+      listSites, createSite, toggleSiteActive
     } = core;
 
     function $(id){ return document.getElementById(id); }
-    function show(el, v){ if (el) el.classList.toggle('hidden', !v); }
+    function show(el,v){ if(el) el.classList.toggle('hidden', !v); }
 
-    /* Defaults de data/mês */
     if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
     if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
 
-    /* Carrega colaboradores no select (coleção roles) */
     async function loadUsersIntoFilter() {
       const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-      const snap = await m.getDocs(m.collection(db, 'roles'));
+      const snap = await m.getDocs(m.collection(db,'roles'));
       const sel = $('userFilter'); sel.innerHTML = '<option value="">Todos</option>';
       snap.forEach(function(doc){
         const d = doc.data();
-        const label = d.name ? (d.name + ' (' + (d.email || '') + ')') : (d.email || doc.id);
-        const opt = document.createElement('option');
-        opt.value = doc.id; opt.textContent = label;
+        const label = d.name ? (d.name+' ('+(d.email||'')+')') : (d.email||doc.id);
+        const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
         sel.appendChild(opt);
       });
     }
 
-    /* ===== Visão diária ===== */
-    async function loadDaily() {
+    async function loadDaily(){
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
-      const uidFilter = $('userFilter').value;
-      const filtered = uidFilter ? rows.filter(function(r){ return r.uid === uidFilter; }) : rows;
-      renderTable(filtered);
+      const uid = $('userFilter').value;
+      renderTable(uid ? rows.filter(function(r){return r.uid===uid;}) : rows);
     }
 
-    function renderTable(rows) {
-      const tbody = $('tbody'); tbody.innerHTML = '';
-      for (let i=0; i<rows.length; i++) {
+    function renderTable(rows){
+      const tbody = $('tbody'); tbody.innerHTML='';
+      for (let i=0;i<rows.length;i++){
         const r = rows[i];
-        const d = r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts);
+        const d = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
         const tr = document.createElement('tr');
         tr.innerHTML =
           '<td>'+ (r.name||'') +'</td>'+
           '<td>'+ (r.email||'') +'</td>'+
-          '<td>'+ d.toLocaleString('pt-BR') + (r.type ? ' ('+r.type+')' : '') + (r.note ? ' — '+r.note : '') +'</td>';
+          '<td>'+ d.toLocaleString('pt-BR')
+          + (r.type? ' ('+r.type+')':'')
+          + (r.note? ' — '+r.note:'')
+          + (r.place? ' — ['+r.place+']':'')
+          + (r.siteName? ' — {'+r.siteName+'}':'')
+          +'</td>';
         tbody.appendChild(tr);
       }
     }
 
-    /* Exporta a tabela visível (serve para dia e mês) */
-    function exportTableCSV(prefix) {
-      const table = document.querySelector('table');
-      const rows = Array.from(table.querySelectorAll('tr'));
-      const data = rows.map(function(tr){
+    function exportTableCSV(prefix){
+      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
+      const data = Array.from(rows).map(function(tr){
         return Array.from(tr.querySelectorAll('th,td'))
-          .map(function(td){ return '"' + (td.textContent || '').replace(/"/g, '""') + '"'; })
-          .join(',');
-      });
-      const csv = data.join('\n');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' }));
-      a.download = prefix + '.csv';
-      a.click(); URL.revokeObjectURL(a.href);
+          .map(function(td){ return '"' + (td.textContent||'').replace(/"/g,'""') + '"'; }).join(',');
+      }).join('\n');
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
+      a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
     }
 
-    /* ===== Relatório mensal (com total por usuário) ===== */
-    async function loadMonthly() {
-      const m = $('monthPicker').value; if (!m) return;
-      const yyyymm = m.replace('-','');
-      const rows = await listPunchesByMonthAllUsers(yyyymm);
-
-      // agrupa por usuário + dia
+    async function loadMonthly(){
+      const m = $('monthPicker').value; if(!m) return;
+      const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
       const map = {};
       rows.forEach(function(r){
-        const dt = r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts);
+        const dt = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
         const day = dt.toISOString().slice(0,10);
-        const key = r.uid + '|' + day;
+        const key = r.uid+'|'+day;
         (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day:day, items:[] }).items.push(r);
       });
-
-      const tbody = $('tbody'); tbody.innerHTML = '';
-      const totalsByUser = {};
-
-      // linhas por dia
-      Object.values(map)
-        .sort(function(a,b){ return a.email.localeCompare(b.email) || a.day.localeCompare(b.day); })
-        .forEach(function(gr){
-          const ms = computeDailyMs(gr.items);
-          totalsByUser[gr.uid] = (totalsByUser[gr.uid] || 0) + ms;
-          const tr = document.createElement('tr');
-          tr.innerHTML = '<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
-          tbody.appendChild(tr);
-        });
-
-      // total por usuário
-      Object.keys(totalsByUser).forEach(function(uid){
-        const ms = totalsByUser[uid];
-        const any = rows.find(function(r){ return r.uid === uid; });
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td><b>Total '+ (any && any.name ? any.name : '') +'</b></td><td>'+ (any && any.email ? any.email : '') +'</td><td><b>'+ msToHHMM(ms) +'</b></td>';
+      const tbody = $('tbody'); tbody.innerHTML='';
+      const totals = {};
+      Object.values(map).sort(function(a,b){
+        return a.email.localeCompare(b.email) || a.day.localeCompare(b.day);
+      }).forEach(function(gr){
+        const ms = computeDailyMs(gr.items);
+        totals[gr.uid] = (totals[gr.uid]||0)+ms;
+        const tr=document.createElement('tr');
+        tr.innerHTML='<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
+        tbody.appendChild(tr);
+      });
+      Object.keys(totals).forEach(function(uid){
+        const any = rows.find(function(r){return r.uid===uid;});
+        const tr=document.createElement('tr');
+        tr.innerHTML='<td><b>Total '+ (any&&any.name||'') +'</b></td><td>'+ (any&&any.email||'') +'</td><td><b>'+ msToHHMM(totals[uid]) +'</b></td>';
         tbody.appendChild(tr);
       });
     }
 
-    /* ===== Pedidos de ajuste (aprovar/rejeitar) ===== */
-    async function loadAdjustments() {
-      const pend = await listPendingAdjustments();
-      const tb = $('tbodyAdj'); tb.innerHTML = '';
-      for (let i=0; i<pend.length; i++) {
-        const r = pend[i];
-        const d = r.tsWanted && r.tsWanted.toDate ? r.tsWanted.toDate() : new Date(r.tsWanted);
-        const tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>'+ (r.email || r.uid) +'</td>'+
-          '<td>'+ r.type +'</td>'+
-          '<td>'+ d.toLocaleString('pt-BR') +'</td>'+
-          '<td>'+ (r.reason||'') +'</td>'+
-          '<td><button class="btn-approve">Aprovar</button> <button class="btn-reject">Rejeitar</button></td>';
-        tr.querySelector('.btn-approve').onclick = async function(){
-          await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments();
-        };
-        tr.querySelector('.btn-reject').onclick  = async function(){
-          const why = prompt('Motivo da rejeição (opcional):') || '';
-          await rejectAdjustment(r.id, auth.currentUser.uid, why);
-          await loadAdjustments();
-        };
+    // Locais
+    async function refreshSites(){
+      const list = await listSites(true);
+      const tb = $('tbodySites'); tb.innerHTML='';
+      list.forEach(function(s){
+        const tr=document.createElement('tr');
+        tr.innerHTML = '<td>'+s.name+'</td><td>'+s.lat.toFixed(6)+'</td><td>'+s.lon.toFixed(6)+'</td><td>'+Math.round(s.radiusM)+'</td><td>'+ (s.active?'Ativo':'Inativo') +'</td>';
         tb.appendChild(tr);
-      }
+      });
+    }
+    $('btnSiteHere').onclick = async function(){
+      if(!navigator.geolocation) { alert('Sem geolocalização.'); return; }
+      navigator.geolocation.getCurrentPosition(function(pos){
+        $('siteLat').value = pos.coords.latitude.toFixed(6);
+        $('siteLon').value = pos.coords.longitude.toFixed(6);
+      }, function(){ alert('Falha ao obter posição.'); }, {enableHighAccuracy:true,timeout:8000});
+    };
+    $('btnSiteAdd').onclick = async function(){
+      try{
+        await createSite(
+          $('siteName').value.trim(),
+          parseFloat($('siteLat').value),
+          parseFloat($('siteLon').value),
+          parseFloat($('siteRadius').value)||200
+        );
+        await refreshSites();
+        alert('Local adicionado.');
+      }catch(e){ alert('Erro: '+(e.message||e)); }
+    };
+
+    // Ajustes
+    async function loadAdjustments(){
+      const pend = await listPendingAdjustments();
+      const tb = $('tbodyAdj'); tb.innerHTML='';
+      pend.forEach(function(r){
+        const d = r.tsWanted && r.tsWanted.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
+        const tr=document.createElement('tr');
+        tr.innerHTML =
+          '<td>'+ (r.email||r.uid) +'</td>'+
+          '<td>'+ (r.action||'incluir') +'</td>'+
+          '<td>'+ (r.type||'-') +'</td>'+
+          '<td>'+ (d? d.toLocaleString("pt-BR") : '-') +'</td>'+
+          '<td>'+ (r.reason||'') +'</td>'+
+          '<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>';
+        tr.querySelector('.ok').onclick = async function(){ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
+        tr.querySelector('.no').onclick = async function(){ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
+        tb.appendChild(tr);
+      });
     }
 
-    /* Botões */
-    $('btnLoad').addEventListener('click', loadDaily);
-    $('btnExport').addEventListener('click', function(){
-      const day = $('dayPicker').value || 'dia';
-      exportTableCSV('pontos_' + day.replace(/-/g,''));
-    });
-    $('btnMonth').addEventListener('click', loadMonthly);
-    $('btnMonthCsv').addEventListener('click', function(){
-      const m = $('monthPicker').value || 'mes';
-      exportTableCSV('relatorio_' + m.replace('-',''));
-    });
-    $('btnLogout').addEventListener('click', async function(){
-      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      await m.signOut(auth);
-      location.href = 'index.html';
-    });
+    // Botões topo
+    $('btnLoad').onclick = loadDaily;
+    $('btnExport').onclick = function(){ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
+    $('btnMonth').onclick = loadMonthly;
+    $('btnMonthCsv').onclick = function(){ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
+    $('btnLogout').onclick = async function(){ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
 
-    /* Gate de admin (só entra se for admin) */
+    // Gate admin
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     mAuth.onAuthStateChanged(auth, async function(user){
-      if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
+      if(!user){ $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
       const ok = await isAdmin(user.uid);
       $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
       show($('adminArea'), ok);
-      if (ok) {
-        await loadUsersIntoFilter();  /* preenche select de colaboradores */
-        await loadDaily();            /* carrega visão diária padrão */
-        await loadAdjustments();      /* carrega pendências */
+      if(ok){
+        await loadUsersIntoFilter();
+        await loadDaily();
+        await loadAdjustments();
+        await refreshSites();
       }
     });
   </script>
