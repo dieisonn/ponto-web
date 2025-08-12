@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Painel Admin - Ponto</title>
   <style>
-    body { font-family: system-ui, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; }
+    body { font-family: system-ui, Arial; max-width: 1100px; margin: 24px auto; padding: 0 12px; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border:1px solid #ddd; padding:8px; }
     th { background:#f7f7f7; text-align:left; }
@@ -13,6 +13,9 @@
     .hidden { display:none; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     small.muted { color:#777; }
+    .danger { color:#b00020; font-weight:600; }
+    .age-hot { background:#fff4f4; }
+    .tight { margin-top:4px; }
   </style>
 </head>
 <body>
@@ -22,6 +25,8 @@
   <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
 
   <div id="adminArea" class="hidden">
+
+    <!-- Filtros diários -->
     <div class="row">
       <label>Data:</label>
       <input type="date" id="dayPicker" />
@@ -32,6 +37,27 @@
       <button id="btnLogout">Sair</button>
     </div>
 
+    <!-- Painel Agora -->
+    <div class="card">
+      <h3>Agora</h3>
+      <small class="muted">Colaboradores com última batida = Entrada hoje e sem Saída posterior.</small>
+      <table class="tight">
+        <thead><tr><th>Colaborador</th><th>Email</th><th>Desde</th><th>Local</th></tr></thead>
+        <tbody id="tbodyNow"></tbody>
+      </table>
+    </div>
+
+    <!-- Anomalias do dia -->
+    <div class="card">
+      <h3>Anomalias de hoje</h3>
+      <small class="muted">Pares ímpares e turnos abertos há mais de 6 horas.</small>
+      <table class="tight">
+        <thead><tr><th>Colaborador</th><th>Email</th><th>Tipo</th><th>Detalhe</th></tr></thead>
+        <tbody id="tbodyAnom"></tbody>
+      </table>
+    </div>
+
+    <!-- Relatório mensal -->
     <div class="row" style="margin-top:8px">
       <label>Mês:</label>
       <input type="month" id="monthPicker" />
@@ -46,6 +72,7 @@
       </table>
     </div>
 
+    <!-- Locais (geofence) -->
     <div class="card">
       <h3>Locais permitidos (geofence)</h3>
       <div class="row">
@@ -66,12 +93,37 @@
       </table>
     </div>
 
+    <!-- Pedidos de ajuste (fila com seleção) -->
     <div class="card">
       <h3>Pedidos de ajuste</h3>
+
+      <div class="row">
+        <button id="btnApproveSel">Aprovar selecionados</button>
+        <div class="row">
+          <label>Motivo de rejeição:</label>
+          <select id="rejTpl">
+            <option value="">— Escolher motivo —</option>
+            <option>Informação insuficiente</option>
+            <option>Pedido duplicado</option>
+            <option>Fora da política</option>
+          </select>
+          <input id="rejReason" type="text" placeholder="(opcional) Observação" style="width:260px" />
+        </div>
+        <button id="btnRejectSel">Rejeitar selecionados</button>
+        <button id="btnRefreshAdj" style="margin-left:auto">Atualizar</button>
+      </div>
+
       <table>
-        <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="chkAll" /></th>
+            <th>Idade</th>
+            <th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th>
+          </tr>
+        </thead>
         <tbody id="tbodyAdj"></tbody>
       </table>
+      <small class="muted">Itens com mais de 48h aparecem destacados.</small>
     </div>
   </div>
 
@@ -86,8 +138,8 @@
       listSites, createSite, toggleSiteActive
     } = core;
 
-    const $ = (id) => document.getElementById(id);
-    const show = (el,v) => { if (el) el.classList.toggle('hidden', !v); };
+    const $ = (id)=>document.getElementById(id);
+    const show = (el,v)=>{ if(el) el.classList.toggle('hidden', !v); };
 
     if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
     if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
@@ -104,11 +156,14 @@
       });
     }
 
+    // ====== DIÁRIO ======
     async function loadDaily(){
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
       const uid = $('userFilter').value;
-      renderTable(uid ? rows.filter(r => r.uid===uid) : rows);
+      renderTable(uid ? rows.filter(r=>r.uid===uid) : rows);
+      await loadNow(rows);
+      await loadAnomalies(rows);
     }
 
     function renderTable(rows){
@@ -117,25 +172,18 @@
         const d = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date(r.ts));
         const tr = document.createElement('tr');
         tr.innerHTML =
-          '<td>'+ (r.name||'') +'</td>'+
-          '<td>'+ (r.email||'') +'</td>'+
-          '<td>'+ d.toLocaleString('pt-BR')
-          + (r.type? ' ('+r.type+')':'')
-          + (r.note? ' — '+r.note:'')
-          + (r.place? ' — ['+r.place+']':'')
-          + (r.siteName? ' — {'+r.siteName+'}':'')
-          +'</td>';
+          `<td>${r.name||''}</td>`+
+          `<td>${r.email||''}</td>`+
+          `<td>${d.toLocaleString('pt-BR')}${r.type? ' ('+r.type+')':''}${r.note? ' — '+r.note:''}${r.siteName? ' — {'+r.siteName+'}':''}</td>`;
         tbody.appendChild(tr);
       });
     }
 
     function exportTableCSV(prefix){
       const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(tr =>
-        Array.from(tr.querySelectorAll('th,td'))
-          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"')
-          .join(',')
-      ).join('\n');
+      const data = Array.from(rows).map(tr=>{
+        return Array.from(tr.querySelectorAll('th,td')).map(td=>'"'+(td.textContent||'').replace(/"/g,'""')+'"').join(',');
+      }).join('\n');
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
       a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
@@ -153,29 +201,103 @@
       });
       const tbody = $('tbody'); tbody.innerHTML='';
       const totals = {};
-      Object.values(map).sort((a,b)=> a.email.localeCompare(b.email) || a.day.localeCompare(b.day))
-        .forEach((gr)=>{
-          const ms = computeDailyMs(gr.items);
-          totals[gr.uid] = (totals[gr.uid]||0)+ms;
-          const tr=document.createElement('tr');
-          tr.innerHTML='<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
-          tbody.appendChild(tr);
-        });
+      Object.values(map).sort((a,b)=>{
+        return a.email.localeCompare(b.email) || a.day.localeCompare(b.day);
+      }).forEach((gr)=>{
+        const ms = computeDailyMs(gr.items);
+        totals[gr.uid] = (totals[gr.uid]||0)+ms;
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`;
+        tbody.appendChild(tr);
+      });
       Object.keys(totals).forEach((uid)=>{
         const any = rows.find(r=>r.uid===uid);
         const tr=document.createElement('tr');
-        tr.innerHTML='<td><b>Total '+ (any?.name||'') +'</b></td><td>'+ (any?.email||'') +'</td><td><b>'+ msToHHMM(totals[uid]) +'</b></td>';
+        tr.innerHTML=`<td><b>Total ${any&&any.name||''}</b></td><td>${any&&any.email||''}</td><td><b>${msToHHMM(totals[uid])}</b></td>`;
         tbody.appendChild(tr);
       });
     }
 
-    // Locais
+    // ====== AGORA ======
+    async function loadNow(rows=null){
+      const day = $('dayPicker').value;
+      const data = rows || await listPunchesByDayAllUsers(day);
+      // ordenar por uid+hora
+      const byUser = {};
+      data.sort((a,b)=>{
+        const ua = a.uid.localeCompare(b.uid);
+        if (ua!==0) return ua;
+        const ta = a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime());
+        const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
+        return ta-tb;
+      });
+      data.forEach(r=>{ (byUser[r.uid] = byUser[r.uid] || []).push(r); });
+
+      const tb = $('tbodyNow'); tb.innerHTML='';
+      Object.values(byUser).forEach(items=>{
+        const last = items[items.length-1];
+        if (last.type === 'entrada'){
+          const dt = last.at?.toDate ? last.at.toDate() : (last.ts?.toDate ? last.ts.toDate() : new Date(last.ts));
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            `<td>${last.name||''}</td>`+
+            `<td>${last.email||''}</td>`+
+            `<td>${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>`+
+            `<td>${last.siteName||''}</td>`;
+          tb.appendChild(tr);
+        }
+      });
+      if (!tb.children.length){
+        const tr=document.createElement('tr');
+        const td=document.createElement('td'); td.colSpan=4; td.textContent='Ninguém em turno agora.';
+        tr.appendChild(td); tb.appendChild(tr);
+      }
+    }
+
+    // ====== ANOMALIAS ======
+    async function loadAnomalies(rows=null){
+      const day = $('dayPicker').value;
+      const data = rows || await listPunchesByDayAllUsers(day);
+      const byUser = {};
+      data.forEach(r=>{ (byUser[r.uid] = byUser[r.uid] || []).push(r); });
+      const tb = $('tbodyAnom'); tb.innerHTML='';
+
+      Object.values(byUser).forEach(items=>{
+        // pares ímpares
+        const e = items.filter(r=>r.type==='entrada').length;
+        const s = items.filter(r=>r.type==='saida').length;
+        if (e!==s){
+          const any = items[items.length-1];
+          const tr=document.createElement('tr');
+          tr.innerHTML=`<td>${any.name||''}</td><td>${any.email||''}</td><td>Pares ímpares</td><td>${e} entradas x ${s} saídas</td>`;
+          tb.appendChild(tr);
+        }
+        // turno aberto > 6h
+        const last = items[items.length-1];
+        if (last?.type==='entrada'){
+          const dt = last.at?.toDate ? last.at.toDate() : (last.ts?.toDate ? last.ts.toDate() : new Date(last.ts));
+          const ms = Date.now() - dt.getTime();
+          if (ms > 6*3600*1000){
+            const tr=document.createElement('tr');
+            tr.innerHTML=`<td>${last.name||''}</td><td>${last.email||''}</td><td class="danger">Turno longo</td><td>Aberto há ${(ms/3600000).toFixed(1)}h</td>`;
+            tb.appendChild(tr);
+          }
+        }
+      });
+
+      if (!tb.children.length){
+        const tr=document.createElement('tr'); const td=document.createElement('td');
+        td.colSpan=4; td.textContent='Sem anomalias hoje.'; tr.appendChild(td); tb.appendChild(tr);
+      }
+    }
+
+    // ====== LOCAIS ======
     async function refreshSites(){
       const list = await listSites(true);
       const tb = $('tbodySites'); tb.innerHTML='';
       list.forEach((s)=>{
         const tr=document.createElement('tr');
-        tr.innerHTML = '<td>'+s.name+'</td><td>'+s.lat.toFixed(6)+'</td><td>'+s.lon.toFixed(6)+'</td><td>'+Math.round(s.radiusM)+'</td><td>'+ (s.active?'Ativo':'Inativo') +'</td>';
+        tr.innerHTML = `<td>${s.name}</td><td>${s.lat.toFixed(6)}</td><td>${s.lon.toFixed(6)}</td><td>${Math.round(s.radiusM)}</td><td>${s.active?'Ativo':'Inativo'}</td>`;
         tb.appendChild(tr);
       });
     }
@@ -184,7 +306,7 @@
       navigator.geolocation.getCurrentPosition((pos)=>{
         $('siteLat').value = pos.coords.latitude.toFixed(6);
         $('siteLon').value = pos.coords.longitude.toFixed(6);
-      }, ()=>{ alert('Falha ao obter posição.'); }, {enableHighAccuracy:true,timeout:8000});
+      }, ()=> alert('Falha ao obter posição.'), {enableHighAccuracy:true,timeout:8000});
     };
     $('btnSiteAdd').onclick = async ()=>{
       try{
@@ -199,47 +321,64 @@
       }catch(e){ alert('Erro: '+(e?.message||e)); }
     };
 
-    // Ajustes
-    async function loadAdjustments(){
-      const pend = await listPendingAdjustments();
-      const tb = $('tbodyAdj'); tb.innerHTML='';
-      pend.forEach((r)=>{
-        const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
-        const tr=document.createElement('tr');
-        tr.innerHTML =
-          '<td>'+ (r.email||r.uid) +'</td>'+
-          '<td>'+ (r.action||'incluir') +'</td>'+
-          '<td>'+ (r.type||'-') +'</td>'+
-          '<td>'+ (d? d.toLocaleString("pt-BR") : '-') +'</td>'+
-          '<td>'+ (r.reason||'') +'</td>'+
-          '<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>';
-        tr.querySelector('.ok').onclick = async ()=>{ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
-        tr.querySelector('.no').onclick = async ()=>{ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
-        tb.appendChild(tr);
-      });
+    // ====== AJUSTES (fila com seleção) ======
+    let currentAdjustments = [];  // cache dos pendentes
+
+    function agingLabel(createdAt){
+      const ts = createdAt?.toMillis ? createdAt.toMillis() : (createdAt ? new Date(createdAt).getTime() : Date.now());
+      const ms = Date.now() - ts;
+      const h = Math.floor(ms/3600000);
+      const d = Math.floor(h/24);
+      if (d>0) return `${d}d ${h%24}h`;
+      return `${h}h`;
     }
 
-    // Botões topo
-    $('btnLoad').onclick = loadDaily;
-    $('btnExport').onclick = ()=>{ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
-    $('btnMonth').onclick = loadMonthly;
-    $('btnMonthCsv').onclick = ()=>{ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
-    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
+    async function loadAdjustments(){
+      currentAdjustments = await listPendingAdjustments();
+      const tb = $('tbodyAdj'); tb.innerHTML='';
+      currentAdjustments.forEach((r)=>{
+        const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
+        const tr=document.createElement('tr');
+        const ageHours = (Date.now() - (r.createdAt?.toMillis?.() || new Date(r.createdAt).getTime()))/3600000;
+        if (ageHours >= 48) tr.classList.add('age-hot');
+        tr.innerHTML =
+          `<td><input type="checkbox" class="sel" data-id="${r.id}"></td>`+
+          `<td>${agingLabel(r.createdAt)}</td>`+
+          `<td>${r.email||r.uid}</td>`+
+          `<td>${r.action||'include'}</td>`+
+          `<td>${r.type||'-'}</td>`+
+          `<td>${d? d.toLocaleString("pt-BR") : '-'}</td>`+
+          `<td>${r.reason||''}</td>`+
+          `<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
+        tr.querySelector('.ok').onclick = async ()=>{
+          await approveAdjustment(r, auth.currentUser.uid);
+          await loadAdjustments(); // some da tela
+        };
+        tr.querySelector('.no').onclick = async ()=>{
+          const why = prompt('Motivo (opcional):')||'';
+          await rejectAdjustment(r.id, auth.currentUser.uid, why);
+          await loadAdjustments(); // some da tela
+        };
+        tb.appendChild(tr);
+      });
 
-    // Gate admin
-    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async (user)=>{
-      if(!user){ $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
-      const ok = await isAdmin(user.uid);
-      $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
-      show($('adminArea'), ok);
-      if(ok){
-        await loadUsersIntoFilter();
-        await loadDaily();
-        await loadAdjustments();
-        await refreshSites();
-      }
+      // select all
+      $('chkAll').checked = false;
+      $('chkAll').onchange = (e)=>{
+        tb.querySelectorAll('.sel').forEach(c=> c.checked = e.target.checked);
+      };
+    }
+
+    function selectedIds(){
+      return Array.from(document.querySelectorAll('#tbodyAdj .sel:checked')).map(i=>i.dataset.id);
+    }
+
+    $('rejTpl').addEventListener('change', (e)=>{
+      if (!e.target.value) return;
+      const cur = $('rejReason').value.trim();
+      $('rejReason').value = cur ? `${cur}; ${e.target.value}` : e.target.value;
+      e.target.value = '';
     });
-  </script>
-</body>
-</html>
+
+    $('btnApproveSel').onclick = async ()=>{
+      const ids = selectedIds(); if (!i
