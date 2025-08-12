@@ -49,7 +49,7 @@
     <p id="dailyTotal" style="font-weight:bold"></p>
 
     <div class="card">
-      <h3>Últimos registros</h3>
+      <h3>Último registro</h3>
       <ul id="punchList"></ul>
     </div>
 
@@ -147,22 +147,27 @@
     $('btnEntrada').addEventListener('click', function(){ doPunch('entrada'); });
     $('btnSaida').addEventListener('click',   function(){ doPunch('saida'); });
 
-    // --- Últimos registros ---
+    // Mostra apenas o último registro
     async function refreshPunches() {
-      const punches = await listRecentPunches(10);
-      const ul = $('punchList'); if (!ul) return;
+      const list = await listRecentPunches(1); // pega só 1
+      const p = list[0];
+      const ul = document.getElementById('punchList');
+      if (!ul) return;
       ul.innerHTML = '';
-      for (let i=0; i<punches.length; i++) {
-        const p = punches[i];
-        const d = p.ts && p.ts.toDate ? p.ts.toDate() : new Date(p.ts);
+    
+      if (!p) {
+        // sem registros ainda
         const li = document.createElement('li');
-        const tipo = p.type ? ' (' + p.type + ')' : '';
-        const obs  = p.note ? ' — ' + p.note : '';
-        li.textContent = d.toLocaleString('pt-BR') + tipo + obs;
+        li.textContent = 'Sem registros ainda.';
         ul.appendChild(li);
+        return;
       }
+    
+      const d = p.ts && p.ts.toDate ? p.ts.toDate() : new Date(p.ts);
+      const li = document.createElement('li');
+      li.textContent = `${d.toLocaleString('pt-BR')}${p.type ? ` (${p.type})` : ''}${p.note ? ' — ' + p.note : ''}`;
+      ul.appendChild(li);
     }
-
     // --- Total de horas do dia ---
     async function updateDailyTotal(){
       if (!auth.currentUser) return;
@@ -219,3 +224,4 @@
   </script>
 </body>
 </html>
+
