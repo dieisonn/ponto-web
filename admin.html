@@ -381,4 +381,46 @@
     });
 
     $('btnApproveSel').onclick = async ()=>{
-      const ids = selectedIds(); if (!i
+      const ids = selectedIds(); if (!ids.length) return alert('Selecione ao menos um item.');
+      for (const id of ids){
+        const r = currentAdjustments.find(x=>x.id===id);
+        if (!r) continue;
+        await approveAdjustment(r, auth.currentUser.uid);
+      }
+      await loadAdjustments();
+    };
+    $('btnRejectSel').onclick = async ()=>{
+      const ids = selectedIds(); if (!ids.length) return alert('Selecione ao menos um item.');
+      const why = $('rejReason').value || '';
+      for (const id of ids){
+        await rejectAdjustment(id, auth.currentUser.uid, why);
+      }
+      $('rejReason').value='';
+      await loadAdjustments();
+    };
+    $('btnRefreshAdj').onclick = loadAdjustments;
+
+    // Botões topo
+    $('btnLoad').onclick = loadDaily;
+    $('btnExport').onclick = ()=>{ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
+    $('btnMonth').onclick = loadMonthly;
+    $('btnMonthCsv').onclick = ()=>{ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
+    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
+
+    // Gate admin
+    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+    mAuth.onAuthStateChanged(auth, async (user)=>{
+      if(!user){ $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
+      const ok = await isAdmin(user.uid);
+      $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
+      show($('adminArea'), ok);
+      if(ok){
+        await loadUsersIntoFilter();
+        await loadDaily();
+        await loadAdjustments();   // fila aparece e, ao aprovar/rejeitar, o item some
+        await refreshSites();
+      }
+    });
+  </script>
+</body>
+</html>
