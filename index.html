@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Marcação de Ponto</title>
 
-  <!-- PWA -->
+  <!-- (Opcional) PWA -->
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111111">
   <link rel="icon" type="image/png" href="./icons/icon-192.png">
@@ -55,14 +55,14 @@
         <button id="btnLogout" style="margin-left:auto">Sair</button>
       </div>
       <p id="status"></p>
-      <small class="muted">A localização é obrigatória e validada pelo raio dos locais cadastrados.</small>
+      <small class="muted">Se estiver sem internet, o ponto fica na fila e sincroniza quando a conexão voltar.</small>
     </div>
 
     <p id="dailyTotal" style="font-weight:bold"></p>
 
     <div id="todayCard" class="card">
       <h3>Registros de hoje</h3>
-      <p id="parityMsg" class="warn hidden">Atenção: Entradas e Saídas estão em quantidade diferente.</p>
+      <p id="parityMsg" class="warn hidden">Atenção: Entradas e saídas estão em quantidade diferente.</p>
       <ul id="todayList" class="clean"></ul>
     </div>
 
@@ -103,8 +103,7 @@
       initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
       addPunch, listRecentPunchesRaw, requestAdjustment,
       listPunchesByDayForUser, msToHHMM, getDailyTotalMs,
-      nearestSite, getQueue, enqueuePunch, trySyncQueue,
-      getUserRole
+      getQueue, enqueuePunch, trySyncQueue, getUserRole
     } from './app.js';
 
     await initApp();
@@ -116,6 +115,7 @@
     function refreshQueueBadge(){
       const n = getQueue().length;
       const b=$('badgeQueue'); b.textContent = `${n} pend.`; show(b, n>0); show($('btnSync'), n>0);
+      if (n>0) { $('status').textContent = 'Você tem batidas pendentes para sincronizar.'; }
     }
 
     // ===== prefill data/hora com agora =====
@@ -126,7 +126,7 @@
     }
     setNow();
 
-    // ===== detecção robusta do próximo tipo =====
+    // ===== detecção robusta do próximo tipo (considera pendências)
     let nextType='entrada';
     function setBtnLabel(){
       $('autoType').textContent = nextType[0].toUpperCase()+nextType.slice(1);
@@ -136,14 +136,26 @@
       if (!auth.currentUser) return;
       const day = $('pDate').value || new Date().toISOString().slice(0,10);
       const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
-      const entradas = rows.filter(r => (r.type||'').toLowerCase() === 'entrada').length;
-      const saidas   = rows.filter(r => (r.type||'').toLowerCase() === 'saida').length;
+      let entradas = rows.filter(r => (r.type||'').toLowerCase() === 'entrada').length;
+      let saidas   = rows.filter(r => (r.type||'').toLowerCase() === 'saida').length;
+
+      // conta a fila do mesmo dia
+      try {
+        const q = getQueue();
+        for (const item of q) {
+          if (!item.atISO || !item.type) continue;
+          if (item.atISO.slice(0,10) !== day) continue;
+          if (item.type.toLowerCase() === 'entrada') entradas++;
+          if (item.type.toLowerCase() === 'saida')   saidas++;
+        }
+      } catch (_) {}
+
       nextType = entradas > saidas ? 'saida' : 'entrada';
       setBtnLabel();
     }
     $('pDate').addEventListener('change', computeNextType);
 
-    // ===== auth: login / registro / sair =====
+    // ===== auth: login / registro / sair
     $('btnLogin').onclick=async()=>{
       $('msg').textContent='';
       try{
@@ -168,19 +180,7 @@
       }catch(e){ $('status').textContent='Erro ao sair: '+(e?.message||e); }
     };
 
-    // ===== geo obrigatória =====
-    async function getGeoOrFail(){
-      if (!('geolocation' in navigator)) throw new Error('Seu navegador não suporta geolocalização.');
-      return new Promise((resolve,reject)=>{
-        navigator.geolocation.getCurrentPosition(
-          pos=>resolve(pos.coords),
-          err=>reject(err),
-          { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-        );
-      });
-    }
-
-    // evita duplicidade (2 min)
+    // ===== evitar duplicidade (2 min)
     async function isDuplicateWithin2Min(type, at){
       const arr=await listRecentPunchesRaw(1);
       if(!arr.length) return false;
@@ -189,7 +189,7 @@
       return Math.abs(at.getTime()-last.getTime()) <= 120000;
     }
 
-    // ===== registrar ponto =====
+    // ===== registrar ponto (sem geolocalização)
     $('btnPunchSave').onclick = async ()=>{
       const dateISO=$('pDate').value, time=$('pTime').value, note=$('note').value||'';
       if(!dateISO || !time){ $('status').textContent='Informe data e hora.'; return; }
@@ -200,34 +200,17 @@
         $('status').textContent='Ponto repetido muito próximo. Aguarde alguns minutos.'; return;
       }
 
-      $('status').textContent='Coletando localização...';
-      let geo;
-      try{ geo=await getGeoOrFail(); }
-      catch(err){
-        $('status').textContent = (err?.code===1)?'Permita o acesso à localização.':(err?.code===3?'Tempo excedido ao obter localização.':'Não foi possível obter localização.');
-        return;
-      }
-      if ((geo.accuracy??9999) > 150){ $('status').textContent='Sinal de GPS impreciso. Tente novamente.'; return; }
-
-      let site=null;
-      try{ site=await nearestSite(geo); }catch(_){}
-      if(!site){
-        // fora do raio → manda pra fila para sincronizar depois
-        enqueuePunch({ note, type:nextType, atISO: at.toISOString(), lat:geo.latitude, lon:geo.longitude, acc:geo.accuracy||null });
-        $('status').textContent='Fora das áreas válidas agora. Ponto colocado na fila para sincronizar.';
-        refreshQueueBadge(); return;
-      }
-
       $('status').textContent='Registrando ponto...';
       try{
-        await addPunch(note, nextType, geo, at, site.id, site.distM, '', site.name);
+        await addPunch(note, nextType, at);
         $('status').textContent='Ponto registrado!';
         $('note').value='';
         await refreshAll();
       }catch(e){
-        enqueuePunch({ note, type:nextType, atISO: at.toISOString(), lat:geo.latitude, lon:geo.longitude, acc:geo.accuracy||null });
+        enqueuePunch({ note, type:nextType, atISO: at.toISOString() }); // só por falta de rede
         $('status').textContent='Sem conexão. Ponto adicionado à fila.';
         refreshQueueBadge();
+        await refreshAll();
       }
     };
 
@@ -252,7 +235,7 @@
       if(!list.length){ lastDoc=null; li.textContent='Sem registros ainda.'; ul.appendChild(li); $('lastMeta').textContent=''; return; }
       lastDoc=list[0]; const when = lastDoc.at?.toDate ? lastDoc.at.toDate() : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
       li.textContent = when.toLocaleString('pt-BR') + (lastDoc.type? ' ('+lastDoc.type+')':'') + (lastDoc.note? ' — '+lastDoc.note:''); ul.appendChild(li);
-      $('lastMeta').textContent = lastDoc.siteId ? ('Local: ' + (lastDoc.siteName||lastDoc.siteId) + ' • Dist: ' + Math.round(lastDoc.distM||0) + ' m') : '';
+      $('lastMeta').textContent = '';
     }
     async function refreshToday(){
       const u=auth.currentUser; if(!u) return;
@@ -314,12 +297,10 @@
       if (user) {
         const admin = await isAdmin(user.uid);
 
-        // busca perfil em roles/{uid}
         const profile = await getUserRole(user.uid);
         const display = (profile && profile.name)
           ? profile.name
           : (user.displayName || profile?.email || user.email || '');
-
         $('who').textContent = display;
 
         // admins não batem ponto
@@ -335,7 +316,7 @@
       }
     });
 
-    // ===== SW PWA =====
+    // ===== SW PWA (opcional)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
