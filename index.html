@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Marcação de Ponto</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111111">
-  <title>Marcação de Ponto</title>
   <style>
     body { font-family: system-ui, Arial; max-width: 720px; margin: 24px auto; padding: 0 12px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
@@ -14,33 +14,21 @@
     label { display:block; margin:8px 0 4px; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .hidden { display:none; }
+    .badge { background:#111; color:#fff; border-radius:999px; padding:2px 8px; font-size:12px; }
     small.muted { color:#777 }
     ul.clean { list-style: none; padding-left: 0; }
     ul.clean li { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:6px 0; border-bottom: 1px dashed #eee; }
     .warn { color:#b00020; font-weight:600; }
-    .inline { display:flex; gap:8px; align-items:center; }
   </style>
 </head>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
-      });
-    }
-  </script>
 <body>
-  <h1>Marcação de Ponto</h1>
+  <h1>Marcação de Ponto <span id="badgeQueue" class="badge hidden"></span></h1>
 
   <div id="loggedOut" class="card">
     <h3>Entrar</h3>
-    <label>Email</label>
-    <input id="email" type="email" />
-    <label>Senha</label>
-    <input id="password" type="password" />
-    <div class="row">
-      <button id="btnLogin">Login</button>
-      <button id="btnRegister">Criar conta</button>
-    </div>
+    <label>Email</label><input id="email" type="email" />
+    <label>Senha</label><input id="password" type="password" />
+    <div class="row"><button id="btnLogin">Login</button><button id="btnRegister">Criar conta</button></div>
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
@@ -52,12 +40,12 @@
       <div class="row">
         <label>Data:<input type="date" id="pDate"></label>
         <label>Hora:<input type="time" id="pTime" step="60"></label>
-        <label>Tipo (detectado):<div><b id="autoType">Entrada</b></div></label>
+        <label>Tipo (detectado): <b id="autoType">Entrada</b></label>
       </div>
-      <label>Motivo/Observação</label>
-      <input id="note" type="text" placeholder="Opcional" />
+      <label>Motivo/Observação</label><input id="note" type="text" placeholder="Opcional" />
       <div class="row">
-        <button id="btnPunchSave">Registrar ponto</button>
+        <button id="btnPunchSave">Registrar Entrada</button>
+        <button id="btnSync" class="hidden">Sincronizar fila</button>
         <button id="btnLogout" style="margin-left:auto">Sair</button>
       </div>
       <p id="status"></p>
@@ -83,31 +71,15 @@
     </div>
 
     <div id="adjustCard" class="card">
-      <h3>Solicitar ajuste</h3>
+      <h3>Solicar ajuste</h3>
       <div class="row">
         <label>Data: <input type="date" id="adjDate"></label>
         <label>Hora: <input type="time" id="adjTime" step="60"></label>
         <label>Tipo:
-          <select id="adjType">
-            <option value="entrada">Entrada</option>
-            <option value="saida">Saída</option>
-          </select>
+          <select id="adjType"><option value="entrada">Entrada</option><option value="saida">Saída</option></select>
         </label>
       </div>
-
-      <div class="row inline">
-        <label style="margin:0">Motivo</label>
-        <select id="adjReasonTpl">
-          <option value="">— Escolher motivo —</option>
-          <option>Esqueci a batida</option>
-          <option>Trabalho externo</option>
-          <option>Problema no aparelho</option>
-          <option>Intervalo fora do horário</option>
-          <option>Outro</option>
-        </select>
-      </div>
-      <input id="adjReason" type="text" placeholder="Explique o ajuste..." />
-
+      <label>Motivo</label><input id="adjReason" type="text" placeholder="Explique o ajuste..." />
       <button id="btnAdjSend">Enviar pedido</button>
       <p id="adjMsg"></p>
     </div>
@@ -116,275 +88,163 @@
   </div>
 
   <div id="adminOnly" class="card hidden">
-    <p>Você é administrador. Use o <a href="admin.html">painel do administrador</a> para gerenciar pontos, locais e solicitações.</p>
+    <p>Você é administrador. Use o <a href="admin.html">painel do administrador</a>.</p>
   </div>
 
   <script type="module">
     import {
       initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
       addPunch, listRecentPunchesRaw, requestAdjustment,
-      listPunchesByDayForUser, computeDailyMs, msToHHMM,
-      nearestSite
+      listPunchesByDayForUser, computeDailyMs, msToHHMM, getDailyTotalMs,
+      nearestSite, getQueue, enqueuePunch, trySyncQueue
     } from './app.js';
 
     await initApp();
-    const $ = (id) => document.getElementById(id);
-    const show = (el,v) => { if (el) el.classList.toggle('hidden', !v); };
 
-    // preenche com "agora"
-    function setNow() {
-      const now = new Date();
-      $('pDate').value = now.toISOString().slice(0,10);
-      $('pTime').value = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    const $ = (id)=>document.getElementById(id);
+    const show=(el,v)=>{ if(el) el.classList.toggle('hidden', !v); };
+
+    // queue helpers
+    function refreshQueueBadge(){
+      const n = getQueue().length;
+      const b=$('badgeQueue'); b.textContent = `${n} pend.`; show(b, n>0); show($('btnSync'), n>0);
     }
+
+    // prefill agora
+    function setNow(){ const now=new Date(); $('pDate').value = now.toISOString().slice(0,10); $('pTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`; }
     setNow();
 
-    // detecta próximo tipo
-    let nextType = 'entrada';
-    async function computeNextType() {
+    let nextType='entrada';
+    function setBtnLabel(){ $('autoType').textContent = nextType[0].toUpperCase()+nextType.slice(1); $('btnPunchSave').textContent = 'Registrar ' + $('autoType').textContent; }
+
+    async function computeNextType(){
       if (!auth.currentUser) return;
       const day = $('pDate').value || new Date().toISOString().slice(0,10);
       const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
       rows.sort((a,b)=>{
-        const ta = a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime());
-        const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
-        return ta - tb;
+        const ta=a.at?.toMillis? a.at.toMillis(): (a.ts?.toMillis? a.ts.toMillis(): new Date(a.ts).getTime());
+        const tb=b.at?.toMillis? b.at.toMillis(): (b.ts?.toMillis? b.ts.toMillis(): new Date(b.ts).getTime());
+        return ta-tb;
       });
-      nextType = rows.length === 0 ? 'entrada' : (rows[rows.length-1].type === 'entrada' ? 'saida' : 'entrada');
-      $('autoType').textContent = nextType.charAt(0).toUpperCase() + nextType.slice(1);
+      nextType = rows.length===0 ? 'entrada' : (rows[rows.length-1].type==='entrada'? 'saida':'entrada');
+      setBtnLabel();
     }
     $('pDate').addEventListener('change', computeNextType);
 
-    // login/registro/sair
-    $('btnLogin').onclick = async () => {
-      $('msg').textContent = '';
-      try {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signInWithEmailAndPassword(auth, $('email').value, $('password').value);
-      } catch (e) { $('msg').textContent = e?.message || String(e); }
-    };
-    $('btnRegister').onclick = async () => {
-      $('msg').textContent = '';
-      try {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        const cred = await m.createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
-        await ensureRoleDoc(cred.user.uid);
-      } catch (e) { $('msg').textContent = e?.message || String(e); }
-    };
-    $('btnLogout').onclick = async (ev) => {
-      ev.preventDefault();
-      try {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signOut(auth);
-        setTimeout(() => location.reload(), 150);
-      } catch (e) { $('status').textContent = 'Erro ao sair: ' + (e?.message || e); }
-    };
+    // login
+    $('btnLogin').onclick=async()=>{ $('msg').textContent=''; try{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signInWithEmailAndPassword(auth,$('email').value,$('password').value);}catch(e){$('msg').textContent=e?.message||e;} };
+    $('btnRegister').onclick=async()=>{ $('msg').textContent=''; try{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); const cred=await m.createUserWithEmailAndPassword(auth,$('email').value,$('password').value); await ensureRoleDoc(cred.user.uid);}catch(e){$('msg').textContent=e?.message||e;} };
+    $('btnLogout').onclick=async(ev)=>{ ev.preventDefault(); try{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); setTimeout(()=>location.reload(),150);}catch(e){$('status').textContent='Erro ao sair: '+(e?.message||e);} };
 
-    // geolocalização
-    async function getGeoOrFail() {
+    // geo
+    async function getGeoOrFail(){
       if (!('geolocation' in navigator)) throw new Error('Seu navegador não suporta geolocalização.');
-      return new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(pos.coords),
-          (err) => reject(err),
-          { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-        );
+      return new Promise((resolve,reject)=>{
+        navigator.geolocation.getCurrentPosition(pos=>resolve(pos.coords), err=>reject(err), { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
       });
     }
 
-    // registrar
-    $('btnPunchSave').onclick = async () => {
-      const dateISO = $('pDate').value;
-      const time = $('pTime').value;
-      const note = $('note').value || '';
-      if (!dateISO || !time) { $('status').textContent = 'Informe data e hora.'; return; }
+    async function isDuplicateWithin2Min(type, at){
+      const arr=await listRecentPunchesRaw(1);
+      if(!arr.length) return false;
+      if((arr[0].type||'')!==type) return false;
+      const last=arr[0].at?.toDate? arr[0].at.toDate() : (arr[0].ts?.toDate ? arr[0].ts.toDate() : new Date());
+      return Math.abs(at.getTime()-last.getTime()) <= 120000;
+    }
 
-      $('status').textContent = 'Coletando localização...';
-      let geo;
-      try { geo = await getGeoOrFail(); }
-      catch (err) {
-        $('status').textContent = (err?.code===1) ? 'Permita o acesso à localização.' :
-                                  (err?.code===3) ? 'Tempo excedido ao obter localização.' :
-                                  'Não foi possível obter localização.';
-        return;
-      }
-
-      // precisão mínima do GPS
-      const acc = geo.accuracy ?? 9999;
-      if (acc > 100) { $('status').textContent = 'Sinal de GPS impreciso (tente novamente mais perto de uma janela).'; return; }
-
-      let site = null;
-      try { site = await nearestSite(geo); } catch (_) {}
-      if (!site) { $('status').textContent = 'Fora das áreas válidas para batida.'; return; }
-
-      const [hh,mm] = time.split(':').map(x=>parseInt(x||'0',10));
+    $('btnPunchSave').onclick = async ()=>{
+      const dateISO=$('pDate').value, time=$('pTime').value, note=$('note').value||'';
+      if(!dateISO || !time){ $('status').textContent='Informe data e hora.'; return; }
+      const [hh,mm]=time.split(':').map(x=>parseInt(x||'0',10));
       const at = new Date(dateISO); at.setHours(hh||0, mm||0, 0, 0);
 
-      $('status').textContent = 'Registrando ponto...';
-      try {
+      if (await isDuplicateWithin2Min(nextType, at)){ $('status').textContent='Ponto repetido muito próximo. Aguarde alguns minutos.'; return; }
+
+      $('status').textContent='Coletando localização...';
+      let geo;
+      try{ geo=await getGeoOrFail(); }catch(err){
+        $('status').textContent = (err?.code===1)?'Permita o acesso à localização.':(err?.code===3?'Tempo excedido ao obter localização.':'Não foi possível obter localização.');
+        return;
+      }
+      if ((geo.accuracy??9999) > 150){ $('status').textContent='Sinal de GPS impreciso. Tente novamente.'; return; }
+
+      // tenta resolver site
+      let site=null; try{ site=await nearestSite(geo); }catch(_){}
+      if(!site){
+        // sem site válido: guarda na fila
+        enqueuePunch({ note, type:nextType, atISO: at.toISOString(), lat:geo.latitude, lon:geo.longitude, acc:geo.accuracy||null });
+        $('status').textContent='Fora das áreas válidas agora. Ponto colocado na fila para sincronizar perto do local.';
+        refreshQueueBadge(); return;
+      }
+
+      // tenta gravar online
+      $('status').textContent='Registrando ponto...';
+      try{
         await addPunch(note, nextType, geo, at, site.id, site.distM, '', site.name);
-        $('status').textContent = 'Ponto registrado!';
-        $('note').value = '';
-        await refreshLast();
-        await refreshToday();
-        await computeNextType();
-        try { await updateDailyTotal(); } catch (e) {}
-      } catch (e) {
-        $('status').textContent = 'Erro: ' + ((e?.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e));
+        $('status').textContent='Ponto registrado!';
+        $('note').value='';
+        await refreshAll();
+      }catch(e){
+        // offline? coloca na fila com coords
+        enqueuePunch({ note, type:nextType, atISO: at.toISOString(), lat:geo.latitude, lon:geo.longitude, acc:geo.accuracy||null });
+        $('status').textContent='Sem conexão. Ponto adicionado à fila para sincronizar depois.';
+        refreshQueueBadge();
       }
     };
 
-    // último
-    let lastDoc = null;
-    async function refreshLast() {
+    $('btnSync').onclick = async ()=>{
+      $('status').textContent='Sincronizando...';
+      const res = await trySyncQueue();
+      $('status').textContent = `Fila: enviados ${res.done}, falhas ${res.fail}. Restantes ${res.left}.`;
+      refreshQueueBadge();
+      await refreshAll();
+    };
+    window.addEventListener('online', async ()=>{ const n=getQueue().length; if(n){ const r=await trySyncQueue(); refreshQueueBadge(); if(r.done>0) await refreshAll(); } });
+
+    // último + hoje + total materializado
+    let lastDoc=null;
+    async function refreshLast(){
       const list = await listRecentPunchesRaw(1);
-      const ul = $('punchList'); ul.innerHTML = '';
-      const li = document.createElement('li');
-      if (!list.length) {
-        lastDoc = null; li.textContent = 'Sem registros ainda.'; ul.appendChild(li); $('lastMeta').textContent = ''; return;
-      }
-      const d = list[0]; lastDoc = d;
-      const when = (d.at?.toDate ? d.at.toDate() : (d.ts?.toDate ? d.ts.toDate() : new Date()));
-      li.textContent = when.toLocaleString('pt-BR') + (d.type ? ' ('+d.type+')':'') + (d.note ? ' — '+d.note : '');
-      ul.appendChild(li);
-      $('lastMeta').textContent = d.siteId ? ('Local: ' + (d.siteName || d.siteId) + ' • Dist: ' + Math.round(d.distM || 0) + ' m') : '';
+      const ul=$('punchList'); ul.innerHTML=''; const li=document.createElement('li');
+      if(!list.length){ lastDoc=null; li.textContent='Sem registros ainda.'; ul.appendChild(li); $('lastMeta').textContent=''; return; }
+      lastDoc=list[0]; const when = lastDoc.at?.toDate ? lastDoc.at.toDate() : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
+      li.textContent = when.toLocaleString('pt-BR') + (lastDoc.type? ' ('+lastDoc.type+')':'') + (lastDoc.note? ' — '+lastDoc.note:''); ul.appendChild(li);
+      $('lastMeta').textContent = lastDoc.siteId ? ('Local: ' + (lastDoc.siteName||lastDoc.siteId) + ' • Dist: ' + Math.round(lastDoc.distM||0) + ' m') : '';
     }
-
-    // atalhos de ajuste/exclusão
-    let selectedTargetPath = null;
-    $('btnAdjFromLast').onclick = () => {
-      if (!lastDoc) return;
-      const when = lastDoc.at?.toDate ? lastDoc.at.toDate() : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
-      $('adjDate').value = when.toISOString().slice(0,10);
-      $('adjTime').value = String(when.getHours()).padStart(2,'0') + ':' + String(when.getMinutes()).padStart(2,'0');
-      $('adjType').value = lastDoc.type || 'entrada';
-      selectedTargetPath = lastDoc._path || null;
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-    };
-    $('btnReqDelete').onclick = async () => {
-      if (!lastDoc || !lastDoc._path) { alert('Não foi possível identificar o ponto.'); return; }
-      const reason = prompt('Explique por que deseja excluir este ponto:') || '';
-      try {
-        await requestAdjustment({ action:'delete', targetPath:lastDoc._path, type:lastDoc.type||'entrada', reason });
-        alert('Pedido de exclusão enviado.');
-      } catch (e) { alert('Erro: ' + (e?.message || e)); }
-    };
-
-    // histórico do dia
     async function refreshToday(){
-      if (!auth.currentUser) return;
-      const today = new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
-      rows.sort((a,b)=>{
-        const ta = a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime());
-        const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
-        return ta - tb;
-      });
-
-      const nE = rows.filter(r=>r.type==='entrada').length;
-      const nS = rows.filter(r=>r.type==='saida').length;
+      const u=auth.currentUser; if(!u) return;
+      const today=new Date().toISOString().slice(0,10);
+      const rows = await listPunchesByDayForUser(u.uid, today);
+      rows.sort((a,b)=> (a.at?.toMillis?.()||a.ts?.toMillis?.()||0) - (b.at?.toMillis?.()||b.ts?.toMillis?.()||0));
+      const nE=rows.filter(r=>r.type==='entrada').length, nS=rows.filter(r=>r.type==='saida').length;
       show($('parityMsg'), nE!==nS);
-
-      const ul = $('todayList'); ul.innerHTML = '';
-      rows.forEach((r)=>{
-        const dt = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date(r.ts));
-        const li = document.createElement('li');
-        const left = document.createElement('div');
-        left.textContent = `${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${r.type}) ${r.note? '— '+r.note : ''}`;
-        const right = document.createElement('div');
-
-        const btnAdj = document.createElement('button');
-        btnAdj.textContent = 'Ajustar';
-        btnAdj.onclick = () => {
-          $('adjDate').value = dt.toISOString().slice(0,10);
-          $('adjTime').value = String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
-          $('adjType').value = r.type || 'entrada';
-          selectedTargetPath = r._path || null;
-          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        };
-
-        const btnDel = document.createElement('button');
-        btnDel.textContent = 'Excluir';
-        btnDel.onclick = async () => {
-          if (!r._path) return alert('Não foi possível identificar o ponto.');
-          const why = prompt('Explique por que deseja excluir este ponto:') || '';
-          try {
-            await requestAdjustment({ action:'delete', targetPath:r._path, type:r.type||'entrada', reason:why });
-            alert('Pedido de exclusão enviado.');
-          } catch(e){ alert('Erro: '+(e?.message||e)); }
-        };
-
-        right.appendChild(btnAdj);
-        right.appendChild(btnDel);
-        li.appendChild(left);
-        li.appendChild(right);
-        ul.appendChild(li);
-      });
+      const ul=$('todayList'); ul.innerHTML='';
+      rows.forEach(r=>{ const dt=r.at?.toDate? r.at.toDate() : (r.ts?.toDate? r.ts.toDate() : new Date(r.ts)); const li=document.createElement('li'); li.textContent = dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ('+(r.type||'?')+') ' + (r.note? '— '+r.note:''); ul.appendChild(li); });
     }
+    async function refreshTotal(){
+      const u=auth.currentUser; if(!u) return; const today=new Date().toISOString().slice(0,10);
+      const ms = await getDailyTotalMs(u.uid, today);
+      $('dailyTotal').textContent = 'Total de horas hoje: ' + msToHHMM(ms);
+    }
+    async function refreshAll(){ await refreshLast(); await refreshToday(); await computeNextType(); await refreshTotal(); }
 
-    // motivos templates
-    $('adjReasonTpl').addEventListener('change', (e)=>{
-      if (!e.target.value) return;
-      const cur = $('adjReason').value.trim();
-      $('adjReason').value = cur ? `${cur}; ${e.target.value}` : e.target.value;
-      e.target.value = '';
+    // ajustes
+    let selectedTargetPath=null;
+    $('btnAdjFromLast').onclick=()=>{ if(!lastDoc) return; const when=lastDoc.at?.toDate? lastDoc.at.toDate() : (lastDoc.ts?.toDate? lastDoc.ts.toDate() : new Date()); $('adjDate').value=when.toISOString().slice(0,10); $('adjTime').value = `${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`; $('adjType').value=lastDoc.type||'entrada'; selectedTargetPath=lastDoc._path||null; window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); };
+    $('btnReqDelete').onclick=async()=>{ if(!lastDoc||!lastDoc._path){ alert('Não foi possível identificar o ponto.'); return; } const reason=prompt('Explique por que deseja excluir este ponto:')||''; try{ await requestAdjustment({ action:'delete', targetPath:lastDoc._path, type:lastDoc.type||'entrada', reason }); alert('Pedido enviado.'); }catch(e){ alert('Erro: '+(e?.message||e)); } };
+    $('btnAdjSend').onclick=async()=>{ try{ const p={ dateISO:$('adjDate').value, timeHHMM:$('adjTime').value, type:$('adjType').value, reason:$('adjReason').value||'' }; if(selectedTargetPath){ p.action='update'; p.targetPath=selectedTargetPath; } await requestAdjustment(p); $('adjMsg').textContent='Pedido enviado. Aguarde aprovação.'; $('adjReason').value=''; selectedTargetPath=null; }catch(e){ $('adjMsg').textContent='Erro: '+(e?.message||e); } };
+
+    // ciclo
+    onUserChanged(async (user)=>{
+      const isLogged=!!user; show($('loggedOut'), !isLogged); if(!isLogged) return;
+      $('who').textContent=user.email||''; await ensureRoleDoc(user.uid); const admin=await isAdmin(user.uid);
+      show($('adminOnly'), admin); show($('loggedIn'), !admin); show($('punchCard'), !admin); show($('todayCard'), !admin); show($('lastCard'), !admin); show($('adjustCard'), !admin); show($('adminLink'), admin);
+      if(!admin){ await refreshAll(); }
+      refreshQueueBadge();
     });
 
-    $('btnAdjSend').onclick = async () => {
-      try {
-        const payload = {
-          dateISO: $('adjDate').value,
-          timeHHMM: $('adjTime').value,
-          type: $('adjType').value,
-          reason: $('adjReason').value || ''
-        };
-        if (selectedTargetPath) {
-          payload.action = 'update';
-          payload.targetPath = selectedTargetPath;
-        }
-        await requestAdjustment(payload);
-        $('adjMsg').textContent = 'Pedido enviado. Aguarde aprovação.';
-        $('adjReason').value = '';
-        selectedTargetPath = null;
-      } catch (e) { $('adjMsg').textContent = 'Erro: ' + (e?.message || e); }
-    };
-
-    async function updateDailyTotal() {
-      if (!auth.currentUser) return;
-      const el = $('dailyTotal'); if (!el) return;
-      const today = new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
-      el.textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
-    }
-
-    onUserChanged(async (user) => {
-      const isLogged = !!user;
-      show($('loggedOut'), !isLogged);
-      if (!isLogged) return;
-
-      $('who').textContent = user.email || '';
-      $('msg').textContent = ''; $('status').textContent = '';
-
-      await ensureRoleDoc(user.uid);
-      const admin = await isAdmin(user.uid);
-
-      show($('adminOnly'), admin);
-      show($('loggedIn'), !admin);
-      show($('punchCard'), !admin);
-      show($('todayCard'), !admin);
-      show($('lastCard'), !admin);
-      show($('adjustCard'), !admin);
-      show($('adminLink'), admin);
-
-      if (!admin) {
-        await refreshLast();
-        await refreshToday();
-        await computeNextType();
-        try { await updateDailyTotal(); } catch (e) {}
-      }
-    });
+    // SW
+    if ('serviceWorker' in navigator) { window.addEventListener('load', ()=> navigator.serviceWorker.register('./service-worker.js').catch(()=>{}) ); }
   </script>
 </body>
 </html>
-
-
