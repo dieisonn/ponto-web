@@ -10,9 +10,11 @@
     th, td { border:1px solid #ddd; padding:8px; }
     th { background:#f7f7f7; text-align:left; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 8px 0; }
+    .row.between { justify-content: space-between; }
     .hidden { display:none; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     small.muted { color:#777; }
+    button { padding: 8px 12px; border-radius: 8px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -46,10 +48,20 @@
       </table>
     </div>
 
+    <!-- Pedidos de ajuste -->
     <div class="card">
-      <h3>Pedidos de ajuste</h3>
+      <div class="row between" style="margin-top:0">
+        <h3 style="margin:0">Pedidos de ajuste</h3>
+        <div class="row" style="margin:0">
+          <button id="btnAdjReload" title="Recarregar pedidos de ajuste">Atualizar</button>
+        </div>
+      </div>
       <table>
-        <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th>
+          </tr>
+        </thead>
         <tbody id="tbodyAdj"></tbody>
       </table>
     </div>
@@ -147,7 +159,7 @@
       });
     }
 
-    // Ajustes
+    // Pedidos de ajuste
     async function loadAdjustments(){
       const pend = await listPendingAdjustments();
       const tb = $('tbodyAdj'); tb.innerHTML='';
@@ -174,6 +186,9 @@
     $('btnMonthCsv').onclick = function(){ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
     $('btnLogout').onclick = async function(){ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
 
+    // Botão de atualizar pedidos de ajuste
+    $('btnAdjReload').onclick = loadAdjustments;
+
     // Gate admin
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     mAuth.onAuthStateChanged(auth, async function(user){
@@ -184,7 +199,7 @@
       if(ok){
         await loadUsersIntoFilter();
         await loadDaily();
-        await loadAdjustments();
+        await loadAdjustments();   // carrega ao entrar
       }
     });
   </script>
