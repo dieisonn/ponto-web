@@ -13,6 +13,9 @@
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .hidden { display:none; }
     small.muted { color:#777 }
+    ul.clean { list-style: none; padding-left: 0; }
+    ul.clean li { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:6px 0; border-bottom: 1px dashed #eee; }
+    .warn { color:#b00020; font-weight:600; }
   </style>
 </head>
 <body>
@@ -69,7 +72,14 @@
     <!-- Total do dia -->
     <p id="dailyTotal" style="font-weight:bold"></p>
 
-    <!-- Último registro + ações -->
+    <!-- Histórico de hoje (pares) -->
+    <div class="card">
+      <h3>Registros de hoje</h3>
+      <p id="parityMsg" class="warn hidden">Atenção: Entradas e Saídas estão em quantidade diferente.</p>
+      <ul id="todayList" class="clean"></ul>
+    </div>
+
+    <!-- Último registro + ações rápidas -->
     <div class="card">
       <h3>Último registro</h3>
       <ul id="punchList"></ul>
@@ -80,7 +90,7 @@
       <small id="lastMeta" class="muted"></small>
     </div>
 
-    <!-- Solicitar ajuste -->
+    <!-- Solicitar ajuste (vai usar o ponto selecionado do histórico, quando houver) -->
     <div class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
@@ -196,11 +206,11 @@
 
       $('status').textContent = 'Registrando ponto...';
       try {
-        // AGORA passamos também site.name (quebra do undefined resolvida)
         await addPunch(note, tipo, geo, at, site.id, site.distM, place, site.name);
         $('status').textContent = 'Ponto registrado!';
         $('note').value = '';
         await refreshLast();
+        await refreshToday();
         try { await updateDailyTotal(); } catch (e) { console.warn('dailyTotal error:', e); }
       } catch (e) {
         const msg = (e && e.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e);
@@ -208,7 +218,7 @@
       }
     };
 
-    // ==== último registro + botões de ajuste/exclusão
+    // ==== último registro + ações rápidas (como estava)
     let lastDoc = null;
     async function refreshLast() {
       const list = await listRecentPunchesRaw(1);
@@ -236,6 +246,7 @@
       const mm = String(when.getMinutes()).padStart(2,'0');
       $('adjTime').value = hh + ':' + mm;
       $('adjType').value = lastDoc.type || 'entrada';
+      selectedTargetPath = lastDoc._path || null;
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     };
 
@@ -253,21 +264,85 @@
       } catch (e) { alert('Erro: ' + (e?.message || e)); }
     };
 
-    // ==== ajuste manual
+    // ===== HISTÓRICO DO DIA =====
+    let selectedTargetPath = null; // quando o usuário escolhe um ponto p/ ajustar
+
+    async function refreshToday(){
+      if (!auth.currentUser) return;
+      const today = new Date().toISOString().slice(0,10);
+      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today); // agora volta _path
+      // ordenar por horário asc
+      rows.sort((a,b)=>{
+        const ta = a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime());
+        const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
+        return ta - tb;
+      });
+
+      // paridade
+      const nE = rows.filter(r=>r.type==='entrada').length;
+      const nS = rows.filter(r=>r.type==='saida').length;
+      show($('parityMsg'), nE!==nS);
+
+      const ul = $('todayList'); ul.innerHTML = '';
+      rows.forEach((r)=>{
+        const dt = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date(r.ts));
+        const li = document.createElement('li');
+        const left = document.createElement('div');
+        left.textContent = `${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${r.type}) ${r.note? '— '+r.note : ''}`;
+        const right = document.createElement('div');
+
+        const btnAdj = document.createElement('button');
+        btnAdj.textContent = 'Ajustar';
+        btnAdj.onclick = () => {
+          $('adjDate').value = dt.toISOString().slice(0,10);
+          const hh = String(dt.getHours()).padStart(2,'0');
+          const mm = String(dt.getMinutes()).padStart(2,'0');
+          $('adjTime').value = `${hh}:${mm}`;
+          $('adjType').value = r.type || 'entrada';
+          selectedTargetPath = r._path || null;
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        };
+
+        const btnDel = document.createElement('button');
+        btnDel.textContent = 'Excluir';
+        btnDel.onclick = async () => {
+          if (!r._path) return alert('Não foi possível identificar o ponto.');
+          const why = prompt('Explique por que deseja excluir este ponto:') || '';
+          try {
+            await requestAdjustment({ action:'delete', targetPath:r._path, type:r.type||'entrada', reason:why });
+            alert('Pedido de exclusão enviado.');
+          } catch(e){ alert('Erro: '+(e?.message||e)); }
+        };
+
+        right.appendChild(btnAdj);
+        right.appendChild(btnDel);
+        li.appendChild(left);
+        li.appendChild(right);
+        ul.appendChild(li);
+      });
+    }
+
+    // ==== ajuste manual (se veio de um ponto selecionado -> UPDATE; senão -> INCLUDE)
     $('btnAdjSend').onclick = async () => {
       try {
-        await requestAdjustment({
+        const payload = {
           dateISO: $('adjDate').value,
           timeHHMM: $('adjTime').value,
           type: $('adjType').value,
           reason: $('adjReason').value || ''
-        });
+        };
+        if (selectedTargetPath) {
+          payload.action = 'update';
+          payload.targetPath = selectedTargetPath;
+        }
+        await requestAdjustment(payload);
         $('adjMsg').textContent = 'Pedido enviado. Aguarde aprovação.';
         $('adjReason').value = '';
+        selectedTargetPath = null;
       } catch (e) { $('adjMsg').textContent = 'Erro: ' + (e?.message || e); }
     };
 
-    // total do dia (com guarda para não quebrar)
+    // total do dia (com guarda)
     async function updateDailyTotal() {
       if (!auth.currentUser) return;
       const el = $('dailyTotal'); if (!el) return;
@@ -285,6 +360,7 @@
       if (user) {
         await ensureRoleDoc(user.uid);
         await refreshLast();
+        await refreshToday();
         try { await updateDailyTotal(); } catch (e) { console.warn('dailyTotal error:', e); }
         const admin = await isAdmin(user.uid);
         show($('adminLink'), admin);
