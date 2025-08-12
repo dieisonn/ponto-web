@@ -22,7 +22,6 @@
   <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
 
   <div id="adminArea" class="hidden">
-    <!-- Filtros diários -->
     <div class="row">
       <label>Data:</label>
       <input type="date" id="dayPicker" />
@@ -33,7 +32,6 @@
       <button id="btnLogout">Sair</button>
     </div>
 
-    <!-- Relatório mensal -->
     <div class="row" style="margin-top:8px">
       <label>Mês:</label>
       <input type="month" id="monthPicker" />
@@ -48,7 +46,6 @@
       </table>
     </div>
 
-    <!-- Gestão de Locais (geofence) -->
     <div class="card">
       <h3>Locais permitidos (geofence)</h3>
       <div class="row">
@@ -69,7 +66,6 @@
       </table>
     </div>
 
-    <!-- Pedidos de ajuste -->
     <div class="card">
       <h3>Pedidos de ajuste</h3>
       <table>
@@ -90,8 +86,8 @@
       listSites, createSite, toggleSiteActive
     } = core;
 
-    function $(id){ return document.getElementById(id); }
-    function show(el,v){ if(el) el.classList.toggle('hidden', !v); }
+    const $ = (id) => document.getElementById(id);
+    const show = (el,v) => { if (el) el.classList.toggle('hidden', !v); };
 
     if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
     if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
@@ -100,7 +96,7 @@
       const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
       const snap = await m.getDocs(m.collection(db,'roles'));
       const sel = $('userFilter'); sel.innerHTML = '<option value="">Todos</option>';
-      snap.forEach(function(doc){
+      snap.forEach((doc)=>{
         const d = doc.data();
         const label = d.name ? (d.name+' ('+(d.email||'')+')') : (d.email||doc.id);
         const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
@@ -112,14 +108,13 @@
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
       const uid = $('userFilter').value;
-      renderTable(uid ? rows.filter(function(r){return r.uid===uid;}) : rows);
+      renderTable(uid ? rows.filter(r => r.uid===uid) : rows);
     }
 
     function renderTable(rows){
       const tbody = $('tbody'); tbody.innerHTML='';
-      for (let i=0;i<rows.length;i++){
-        const r = rows[i];
-        const d = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
+      rows.forEach((r)=>{
+        const d = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date(r.ts));
         const tr = document.createElement('tr');
         tr.innerHTML =
           '<td>'+ (r.name||'') +'</td>'+
@@ -131,15 +126,16 @@
           + (r.siteName? ' — {'+r.siteName+'}':'')
           +'</td>';
         tbody.appendChild(tr);
-      }
+      });
     }
 
     function exportTableCSV(prefix){
       const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(function(tr){
-        return Array.from(tr.querySelectorAll('th,td'))
-          .map(function(td){ return '"' + (td.textContent||'').replace(/"/g,'""') + '"'; }).join(',');
-      }).join('\n');
+      const data = Array.from(rows).map(tr =>
+        Array.from(tr.querySelectorAll('th,td'))
+          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"')
+          .join(',')
+      ).join('\n');
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
       a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
@@ -149,27 +145,26 @@
       const m = $('monthPicker').value; if(!m) return;
       const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
       const map = {};
-      rows.forEach(function(r){
-        const dt = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
+      rows.forEach((r)=>{
+        const dt = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date(r.ts));
         const day = dt.toISOString().slice(0,10);
         const key = r.uid+'|'+day;
         (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day:day, items:[] }).items.push(r);
       });
       const tbody = $('tbody'); tbody.innerHTML='';
       const totals = {};
-      Object.values(map).sort(function(a,b){
-        return a.email.localeCompare(b.email) || a.day.localeCompare(b.day);
-      }).forEach(function(gr){
-        const ms = computeDailyMs(gr.items);
-        totals[gr.uid] = (totals[gr.uid]||0)+ms;
+      Object.values(map).sort((a,b)=> a.email.localeCompare(b.email) || a.day.localeCompare(b.day))
+        .forEach((gr)=>{
+          const ms = computeDailyMs(gr.items);
+          totals[gr.uid] = (totals[gr.uid]||0)+ms;
+          const tr=document.createElement('tr');
+          tr.innerHTML='<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
+          tbody.appendChild(tr);
+        });
+      Object.keys(totals).forEach((uid)=>{
+        const any = rows.find(r=>r.uid===uid);
         const tr=document.createElement('tr');
-        tr.innerHTML='<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
-        tbody.appendChild(tr);
-      });
-      Object.keys(totals).forEach(function(uid){
-        const any = rows.find(function(r){return r.uid===uid;});
-        const tr=document.createElement('tr');
-        tr.innerHTML='<td><b>Total '+ (any&&any.name||'') +'</b></td><td>'+ (any&&any.email||'') +'</td><td><b>'+ msToHHMM(totals[uid]) +'</b></td>';
+        tr.innerHTML='<td><b>Total '+ (any?.name||'') +'</b></td><td>'+ (any?.email||'') +'</td><td><b>'+ msToHHMM(totals[uid]) +'</b></td>';
         tbody.appendChild(tr);
       });
     }
@@ -178,20 +173,20 @@
     async function refreshSites(){
       const list = await listSites(true);
       const tb = $('tbodySites'); tb.innerHTML='';
-      list.forEach(function(s){
+      list.forEach((s)=>{
         const tr=document.createElement('tr');
         tr.innerHTML = '<td>'+s.name+'</td><td>'+s.lat.toFixed(6)+'</td><td>'+s.lon.toFixed(6)+'</td><td>'+Math.round(s.radiusM)+'</td><td>'+ (s.active?'Ativo':'Inativo') +'</td>';
         tb.appendChild(tr);
       });
     }
-    $('btnSiteHere').onclick = async function(){
+    $('btnSiteHere').onclick = async ()=>{
       if(!navigator.geolocation) { alert('Sem geolocalização.'); return; }
-      navigator.geolocation.getCurrentPosition(function(pos){
+      navigator.geolocation.getCurrentPosition((pos)=>{
         $('siteLat').value = pos.coords.latitude.toFixed(6);
         $('siteLon').value = pos.coords.longitude.toFixed(6);
-      }, function(){ alert('Falha ao obter posição.'); }, {enableHighAccuracy:true,timeout:8000});
+      }, ()=>{ alert('Falha ao obter posição.'); }, {enableHighAccuracy:true,timeout:8000});
     };
-    $('btnSiteAdd').onclick = async function(){
+    $('btnSiteAdd').onclick = async ()=>{
       try{
         await createSite(
           $('siteName').value.trim(),
@@ -201,15 +196,15 @@
         );
         await refreshSites();
         alert('Local adicionado.');
-      }catch(e){ alert('Erro: '+(e.message||e)); }
+      }catch(e){ alert('Erro: '+(e?.message||e)); }
     };
 
     // Ajustes
     async function loadAdjustments(){
       const pend = await listPendingAdjustments();
       const tb = $('tbodyAdj'); tb.innerHTML='';
-      pend.forEach(function(r){
-        const d = r.tsWanted && r.tsWanted.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
+      pend.forEach((r)=>{
+        const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
         const tr=document.createElement('tr');
         tr.innerHTML =
           '<td>'+ (r.email||r.uid) +'</td>'+
@@ -218,22 +213,22 @@
           '<td>'+ (d? d.toLocaleString("pt-BR") : '-') +'</td>'+
           '<td>'+ (r.reason||'') +'</td>'+
           '<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>';
-        tr.querySelector('.ok').onclick = async function(){ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
-        tr.querySelector('.no').onclick = async function(){ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
+        tr.querySelector('.ok').onclick = async ()=>{ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
+        tr.querySelector('.no').onclick = async ()=>{ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
         tb.appendChild(tr);
       });
     }
 
     // Botões topo
     $('btnLoad').onclick = loadDaily;
-    $('btnExport').onclick = function(){ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
+    $('btnExport').onclick = ()=>{ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
     $('btnMonth').onclick = loadMonthly;
-    $('btnMonthCsv').onclick = function(){ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
-    $('btnLogout').onclick = async function(){ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
+    $('btnMonthCsv').onclick = ()=>{ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
+    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
 
     // Gate admin
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async function(user){
+    mAuth.onAuthStateChanged(auth, async (user)=>{
       if(!user){ $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
       const ok = await isAdmin(user.uid);
       $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
