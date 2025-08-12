@@ -178,7 +178,7 @@
     onUserChanged(async function (user) {
       show($('loggedOut'), !user);
       show($('loggedIn'),  !!user);
-      $('who').textContent = user ? (user.name || '') : '';
+      $('who').textContent = user ? (user.email || '') : '';
       $('msg').textContent = '';
       $('status').textContent = '';
       if (user) {
@@ -222,5 +222,6 @@
   </script>
 </body>
 </html>
+
 
 
