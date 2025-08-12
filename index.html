@@ -38,6 +38,7 @@
     <div class="row">
       <button id="btnEntrada">Entrada</button>
       <button id="btnSaida">Saída</button>
+      <label><input type="checkbox" id="geoOpt" /> Incluir minha localização (opcional)</label>
       <button id="btnLogout" style="margin-left:auto">Sair</button>
     </div>
 
@@ -49,7 +50,7 @@
       <h3>Últimos registros</h3>
       <ul id="punchList"></ul>
     </div>
-
+    <p id="dailyTotal"></p>
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
 <script type="module">
@@ -103,19 +104,31 @@
   });
 
   // ---------- BATIDA ----------
-  async function doPunch(tipo) {
-    const note = $('note')?.value || '';
-    $('status').textContent = 'Registrando...';
-    try {
-      await addPunchSmart(tipo, note);
-      $('status').textContent = `Ponto ${tipo} registrado!`;
-      if ($('note')) $('note').value = '';
-    } catch (e) {
-      $('status').textContent = 'Erro: ' + (e?.message || e);
-    }
-    await refreshPunches();
-  }
+ async function doPunch(tipo) {
+  const noteEl = document.getElementById('note');
+  const note = noteEl ? noteEl.value : '';
+  const wantGeo = document.getElementById('geoOpt')?.checked;
 
+  document.getElementById('status').textContent = 'Registrando...';
+  try {
+    let geo = null;
+    if (wantGeo && navigator.geolocation) {
+      geo = await new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos.coords),
+          () => resolve(null),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      });
+    }
+    await addPunchSmart(tipo, note, geo);
+    document.getElementById('status').textContent = `Ponto ${tipo} registrado!`;
+    if (noteEl) noteEl.value = '';
+  } catch (e) {
+    document.getElementById('status').textContent = 'Erro: ' + (e?.message || e);
+  }
+  await refreshPunches();
+}
   $('btnEntrada').addEventListener('click', () => doPunch('entrada'));
   $('btnSaida').addEventListener('click',   () => doPunch('saida'));
 
@@ -123,6 +136,7 @@
   async function refreshPunches() {
     const punches = await listRecentPunches(10);
     const ul = $('punchList'); if (!ul) return;
+    
     ul.innerHTML = '';
     for (const p of punches) {
       const d = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
@@ -134,6 +148,11 @@
 
   // ---------- CICLO DE LOGIN ----------
   onUserChanged(async (user) => {
+    // dentro do onUserChanged, após refreshPunches:
+    const today = new Date().toISOString().slice(0,10);
+    const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
+    document.getElementById('dailyTotal').textContent =
+      'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
     show($('loggedOut'), !user);
     show($('loggedIn'),  !!user);
     $('who').textContent = user?.email || '';
@@ -164,6 +183,7 @@
 
 </body>
 </html>
+
 
 
 
