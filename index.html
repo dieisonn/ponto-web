@@ -21,6 +21,13 @@
     .inline { display:flex; gap:8px; align-items:center; }
   </style>
 </head>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+      });
+    }
+  </script>
 <body>
   <h1>Marcação de Ponto</h1>
 
@@ -379,4 +386,5 @@
   </script>
 </body>
 </html>
+
 
