@@ -58,7 +58,6 @@
       <input id="note" type="text" placeholder="Opcional" />
       <div class="row">
         <button id="btnPunchSave">Registrar ponto</button>
-        <button id="btnUseNow" type="button">Usar data/hora atuais</button>
         <button id="btnLogout" style="margin-left:auto">Sair</button>
       </div>
       <p id="status"></p>
@@ -137,6 +136,7 @@
     const $ = (id) => document.getElementById(id);
     const show = (el,v) => { if (el) el.classList.toggle('hidden', !v); };
 
+    // Preenche data/hora com "agora" ao carregar (o usuário pode editar se quiser)
     function setNow() {
       const now = new Date();
       $('pDate').value = now.toISOString().slice(0,10);
@@ -145,7 +145,6 @@
       $('pTime').value = hh + ':' + mm;
     }
     setNow();
-    $('btnUseNow').onclick = setNow;
 
     // detecta próximo tipo do dia escolhido
     let nextType = 'entrada';
@@ -336,7 +335,7 @@
       e.target.value = '';
     });
 
-    // enviar ajuste (include/update)
+    // enviar ajuste
     $('btnAdjSend').onclick = async () => {
       try {
         const payload = {
