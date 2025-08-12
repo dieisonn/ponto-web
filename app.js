@@ -101,14 +101,14 @@ export async function addPunch(note='', tipo='entrada', geo, atDate, siteId, dis
   const period = yyyymm(new Date());
   const ref = fs.doc(fs.collection(db,'punches',user.uid,period));
   await fs.setDoc(ref, {
-    ts: fs.Timestamp.now(),              // carimbo do servidor (auditoria)
-    at: atDate ? fs.Timestamp.fromDate(atDate) : null, // horário escolhido
+    ts: fs.Timestamp.now(),
+    at: atDate ? fs.Timestamp.fromDate(atDate) : null,
     email: user.email || '',
     uid: user.uid,
     type: tipo,
     note,
     place: place || '',
-    siteId, distM: distM||0, siteName: undefined, // nome será verificado no admin
+    siteId, distM: distM||0, siteName: undefined,
     geo: { lat: geo.latitude, lon: geo.longitude, acc: geo.accuracy ?? null }
   });
 }
@@ -127,7 +127,6 @@ export async function listRecentPunches(limitN=10){
   const arr = await listRecentPunchesRaw(limitN); return arr.map(x=>{ const { _id,_path,...r }=x; return r; });
 }
 
-/* diárias/mensais (preferem 'at' se existir) */
 export async function listPunchesByDayForUser(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -161,11 +160,12 @@ export function computeDailyMs(punchesAsc){
   return total;
 }
 export function msToHHMM(ms){ const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000); return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
+
 export async function listPunchesByDayAllUsers(dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
-  const rolesMap={}; rolesSnap.forEach(function(d){ rolesMap[d.id]=d.data(); });
+  const rolesMap={}; rolesSnap.forEach(d=>{ rolesMap[d.id]=d.data(); });
   const base = new Date(dayISO);
   const months=[ yyyymm(base), yyyymm(new Date(base.getFullYear(), base.getMonth()-1,1)) ];
   const rows=[];
@@ -182,89 +182,6 @@ export async function listPunchesByDayAllUsers(dayISO){
       }
     }
   }
-  rows.sort(function(a,b){
+  rows.sort((a,b)=>{
     const ta=(a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime()));
-    const tb=(b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime()));
-    return ta-tb;
-  });
-  return rows;
-}
-export async function listPunchesByMonthAllUsers(yyyymmStr){
-  await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const rolesSnap=await fs.getDocs(fs.collection(db,'roles'));
-  const rows=[];
-  for (let i=0;i<rolesSnap.docs.length;i++){
-    const r=rolesSnap.docs[i]; const uid=r.id, role=r.data();
-    const q=fs.query(fs.collection(db,'punches',uid,yyyymmStr), fs.orderBy('ts','asc'));
-    const s=await fs.getDocs(q);
-    for (let j=0;j<s.docs.length;j++){ const d=s.docs[j].data(); rows.push({ ...d, uid, name:role?.name||'', email:role?.email||'' }); }
-  }
-  return rows;
-}
-
-/* ===== Ajustes ===== */
-export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }){
-  await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const user=auth.currentUser; if(!user) throw new Error('Não autenticado');
-
-  let tsWanted=null;
-  if (!action || action==='include') {
-    const parts=(timeHHMM||'00:00').split(':'); const hh=parseInt(parts[0]||'0',10), mm=parseInt(parts[1]||'0',10);
-    const dt=new Date(dateISO); dt.setHours(hh,mm,0,0);
-    tsWanted=fs.Timestamp.fromDate(dt);
-  }
-
-  return fs.addDoc(fs.collection(db,'adjust_requests'),{
-    uid:user.uid, email:user.email||'',
-    type: type || null,
-    reason: reason || '',
-    action: action || 'include',     // include | delete
-    targetPath: targetPath || null,  // caminho de punches/... para delete
-    tsWanted: tsWanted,
-    status:'pending', createdAt: fs.Timestamp.now()
-  });
-}
-export async function listPendingAdjustments(){
-  await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const q=fs.query(fs.collection(db,'adjust_requests'), fs.where('status','==','pending'), fs.orderBy('createdAt','asc'));
-  const s=await fs.getDocs(q);
-  return s.docs.map(d=>({ id:d.id, ...d.data() }));
-}
-export async function approveAdjustment(req, adminUid){
-  await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-
-  if (req.action==='delete' && req.targetPath){
-    // apaga o ponto
-    await fs.deleteDoc(fs.doc(db, req.targetPath));
-  } else {
-    // inclui ponto em tsWanted (sem geo/site; é um ajuste administrativo)
-    const dt=req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
-    const period=yyyymm(dt);
-    const pref=fs.doc(fs.collection(db,'punches', req.uid, period));
-    await fs.setDoc(pref,{
-      ts: fs.Timestamp.now(),
-      at: req.tsWanted,
-      email: req.email||'',
-      uid: req.uid,
-      type: req.type || 'entrada',
-      note: 'Ajuste aprovado (admin)',
-      place: '',
-      siteId: 'admin_adjust', distM: 0,
-      geo: { lat: null, lon: null, acc: null }
-    });
-  }
-  await fs.updateDoc(fs.doc(db,'adjust_requests',req.id),{
-    status:'approved', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid
-  });
-}
-export async function rejectAdjustment(reqId, adminUid, reason){
-  await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  await fs.updateDoc(fs.doc(db,'adjust_requests',reqId),{
-    status:'rejected', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid, adminNote: reason||''
-  });
-}
+    const tb=(b.at?.toMil
