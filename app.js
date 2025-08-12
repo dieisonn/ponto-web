@@ -88,19 +88,20 @@ export async function nearestSite(coords){
 }
 
 /* ===== Ponto (geofence obrigatório) ===== */
-export async function addPunch(note='', tipo='entrada', geo, atDate, siteId, distM, place=''){
+// >>> siteName é opcional; se vier undefined, NÃO será enviado ao Firestore
+export async function addPunch(note='', tipo='entrada', geo, atDate, siteId, distM, place='', siteName=null){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const user = auth.currentUser; if(!user) throw new Error('Não autenticado');
 
   if (!geo || !isFinite(geo.latitude) || !isFinite(geo.longitude))
     throw new Error('Localização obrigatória.');
-
   if (!siteId) throw new Error('Fora das áreas válidas para batida.');
 
   const period = yyyymm(new Date());
   const ref = fs.doc(fs.collection(db,'punches',user.uid,period));
-  await fs.setDoc(ref, {
+
+  const payload = {
     ts: fs.Timestamp.now(),
     at: atDate ? fs.Timestamp.fromDate(atDate) : null,
     email: user.email || '',
@@ -108,9 +109,13 @@ export async function addPunch(note='', tipo='entrada', geo, atDate, siteId, dis
     type: tipo,
     note,
     place: place || '',
-    siteId, distM: distM||0, siteName: undefined,
+    siteId,
+    distM: distM || 0,
     geo: { lat: geo.latitude, lon: geo.longitude, acc: geo.accuracy ?? null }
-  });
+  };
+  if (siteName != null) payload.siteName = siteName; // <- evita undefined no Firestore
+
+  await fs.setDoc(ref, payload);
 }
 
 /* ===== consultas ===== */
@@ -127,6 +132,7 @@ export async function listRecentPunches(limitN=10){
   const arr = await listRecentPunchesRaw(limitN); return arr.map(x=>{ const { _id,_path,...r }=x; return r; });
 }
 
+/* diárias/mensais (preferem 'at' se existir) */
 export async function listPunchesByDayForUser(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -160,12 +166,11 @@ export function computeDailyMs(punchesAsc){
   return total;
 }
 export function msToHHMM(ms){ const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000); return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
-
 export async function listPunchesByDayAllUsers(dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
-  const rolesMap={}; rolesSnap.forEach(d=>{ rolesMap[d.id]=d.data(); });
+  const rolesMap={}; rolesSnap.forEach(function(d){ rolesMap[d.id]=d.data(); });
   const base = new Date(dayISO);
   const months=[ yyyymm(base), yyyymm(new Date(base.getFullYear(), base.getMonth()-1,1)) ];
   const rows=[];
@@ -182,7 +187,7 @@ export async function listPunchesByDayAllUsers(dayISO){
       }
     }
   }
-  rows.sort((a,b)=>{
+  rows.sort(function(a,b){
     const ta=(a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime()));
     const tb=(b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime()));
     return ta-tb;
