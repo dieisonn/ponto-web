@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Painel Admin - Ponto</title>
   <style>
+    /* Layout simples do painel do admin */
     body { font-family: system-ui, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border:1px solid #ddd; padding:8px; }
@@ -21,6 +22,7 @@
   <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
 
   <div id="adminArea" class="hidden">
+    <!-- Filtros diários -->
     <div class="row">
       <label>Data:</label>
       <input type="date" id="dayPicker" />
@@ -39,6 +41,7 @@
       <button id="btnMonthCsv">Exportar CSV (mês)</button>
     </div>
 
+    <!-- Tabela reaproveitada para dia e mês -->
     <div class="card">
       <table>
         <thead><tr><th>Colaborador</th><th>Email</th><th>Horário / Total</th></tr></thead>
@@ -46,6 +49,7 @@
       </table>
     </div>
 
+    <!-- Pedidos de ajuste -->
     <div class="card">
       <h3>Pedidos de ajuste</h3>
       <table>
@@ -56,9 +60,11 @@
   </div>
 
   <script type="module">
+    /* Importa tudo como "core" para evitar colisões */
     import * as core from './app.js';
     await core.initApp();
 
+    /* Desestrutura o que vamos usar */
     const {
       auth, db, isAdmin, listPunchesByDayAllUsers,
       listPunchesByMonthAllUsers, computeDailyMs, msToHHMM,
@@ -68,9 +74,11 @@
     function $(id){ return document.getElementById(id); }
     function show(el, v){ if (el) el.classList.toggle('hidden', !v); }
 
+    /* Defaults de data/mês */
     if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
     if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
 
+    /* Carrega colaboradores no select (coleção roles) */
     async function loadUsersIntoFilter() {
       const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
       const snap = await m.getDocs(m.collection(db, 'roles'));
@@ -84,6 +92,7 @@
       });
     }
 
+    /* ===== Visão diária ===== */
     async function loadDaily() {
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
@@ -98,12 +107,15 @@
         const r = rows[i];
         const d = r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts);
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+ (r.name||'') +'</td><td>'+ (r.email||'') +'</td><td>'+ 
-          d.toLocaleString('pt-BR') + (r.type ? ' ('+r.type+')' : '') + (r.note ? ' — '+r.note : '') +'</td>';
+        tr.innerHTML =
+          '<td>'+ (r.name||'') +'</td>'+
+          '<td>'+ (r.email||'') +'</td>'+
+          '<td>'+ d.toLocaleString('pt-BR') + (r.type ? ' ('+r.type+')' : '') + (r.note ? ' — '+r.note : '') +'</td>';
         tbody.appendChild(tr);
       }
     }
 
+    /* Exporta a tabela visível (serve para dia e mês) */
     function exportTableCSV(prefix) {
       const table = document.querySelector('table');
       const rows = Array.from(table.querySelectorAll('tr'));
@@ -119,11 +131,13 @@
       a.click(); URL.revokeObjectURL(a.href);
     }
 
+    /* ===== Relatório mensal (com total por usuário) ===== */
     async function loadMonthly() {
       const m = $('monthPicker').value; if (!m) return;
       const yyyymm = m.replace('-','');
       const rows = await listPunchesByMonthAllUsers(yyyymm);
 
+      // agrupa por usuário + dia
       const map = {};
       rows.forEach(function(r){
         const dt = r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts);
@@ -135,6 +149,7 @@
       const tbody = $('tbody'); tbody.innerHTML = '';
       const totalsByUser = {};
 
+      // linhas por dia
       Object.values(map)
         .sort(function(a,b){ return a.email.localeCompare(b.email) || a.day.localeCompare(b.day); })
         .forEach(function(gr){
@@ -145,6 +160,7 @@
           tbody.appendChild(tr);
         });
 
+      // total por usuário
       Object.keys(totalsByUser).forEach(function(uid){
         const ms = totalsByUser[uid];
         const any = rows.find(function(r){ return r.uid === uid; });
@@ -154,7 +170,7 @@
       });
     }
 
-    // Ajustes
+    /* ===== Pedidos de ajuste (aprovar/rejeitar) ===== */
     async function loadAdjustments() {
       const pend = await listPendingAdjustments();
       const tb = $('tbodyAdj'); tb.innerHTML = '';
@@ -168,7 +184,9 @@
           '<td>'+ d.toLocaleString('pt-BR') +'</td>'+
           '<td>'+ (r.reason||'') +'</td>'+
           '<td><button class="btn-approve">Aprovar</button> <button class="btn-reject">Rejeitar</button></td>';
-        tr.querySelector('.btn-approve').onclick = async function(){ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
+        tr.querySelector('.btn-approve').onclick = async function(){
+          await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments();
+        };
         tr.querySelector('.btn-reject').onclick  = async function(){
           const why = prompt('Motivo da rejeição (opcional):') || '';
           await rejectAdjustment(r.id, auth.currentUser.uid, why);
@@ -178,7 +196,7 @@
       }
     }
 
-    // Botões
+    /* Botões */
     $('btnLoad').addEventListener('click', loadDaily);
     $('btnExport').addEventListener('click', function(){
       const day = $('dayPicker').value || 'dia';
@@ -195,7 +213,7 @@
       location.href = 'index.html';
     });
 
-    // Gate de admin
+    /* Gate de admin (só entra se for admin) */
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     mAuth.onAuthStateChanged(auth, async function(user){
       if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
@@ -203,9 +221,9 @@
       $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
       show($('adminArea'), ok);
       if (ok) {
-        await loadUsersIntoFilter();
-        await loadDaily();
-        await loadAdjustments();
+        await loadUsersIntoFilter();  /* preenche select de colaboradores */
+        await loadDaily();            /* carrega visão diária padrão */
+        await loadAdjustments();      /* carrega pendências */
       }
     });
   </script>
