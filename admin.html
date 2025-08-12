@@ -20,6 +20,13 @@
     .tight { margin-top:4px; }
   </style>
 </head>
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    });
+  }
+  </script>
 <body>
   <h1>Painel do Administrador</h1>
   <p><a href="index.html">← Voltar</a></p>
@@ -426,4 +433,5 @@
   </script>
 </body>
 </html>
+
 
