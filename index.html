@@ -3,10 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" type="image/png" href="./icons/icon-192.png">
   <title>Marcação de Ponto</title>
+
+  <!-- PWA -->
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111111">
+  <link rel="icon" type="image/png" href="./icons/icon-192.png">
+
   <style>
     body { font-family: system-ui, Arial; max-width: 720px; margin: 24px auto; padding: 0 12px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
@@ -25,6 +28,7 @@
 <body>
   <h1>Marcação de Ponto <span id="badgeQueue" class="badge hidden"></span></h1>
 
+  <!-- ===== deslogado ===== -->
   <div id="loggedOut" class="card">
     <h3>Entrar</h3>
     <label>Email</label><input id="email" type="email" />
@@ -33,6 +37,7 @@
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
+  <!-- ===== logado (colaborador) ===== -->
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
 
@@ -72,7 +77,7 @@
     </div>
 
     <div id="adjustCard" class="card">
-      <h3>Solicar ajuste</h3>
+      <h3>Solicitar ajuste</h3>
       <div class="row">
         <label>Data: <input type="date" id="adjDate"></label>
         <label>Hora: <input type="time" id="adjTime" step="60"></label>
@@ -88,6 +93,7 @@
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
 
+  <!-- ===== mensagem para admins (não batem ponto) ===== -->
   <div id="adminOnly" class="card hidden">
     <p>Você é administrador. Use o <a href="admin.html">painel do administrador</a>.</p>
   </div>
@@ -96,8 +102,9 @@
     import {
       initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
       addPunch, listRecentPunchesRaw, requestAdjustment,
-      listPunchesByDayForUser, computeDailyMs, msToHHMM, getDailyTotalMs,
-      nearestSite, getQueue, enqueuePunch, trySyncQueue
+      listPunchesByDayForUser, msToHHMM, getDailyTotalMs,
+      nearestSite, getQueue, enqueuePunch, trySyncQueue,
+      getUserRole
     } from './app.js';
 
     await initApp();
@@ -105,63 +112,75 @@
     const $ = (id)=>document.getElementById(id);
     const show=(el,v)=>{ if(el) el.classList.toggle('hidden', !v); };
 
-    // queue helpers
+    // ===== fila offline: badge =====
     function refreshQueueBadge(){
       const n = getQueue().length;
       const b=$('badgeQueue'); b.textContent = `${n} pend.`; show(b, n>0); show($('btnSync'), n>0);
     }
 
-    // prefill agora
-    function setNow(){ const now=new Date(); $('pDate').value = now.toISOString().slice(0,10); $('pTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`; }
+    // ===== prefill data/hora com agora =====
+    function setNow(){
+      const now=new Date();
+      $('pDate').value = now.toISOString().slice(0,10);
+      $('pTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    }
     setNow();
 
+    // ===== detecção robusta do próximo tipo =====
     let nextType='entrada';
-    function setBtnLabel(){ $('autoType').textContent = nextType[0].toUpperCase()+nextType.slice(1); $('btnPunchSave').textContent = 'Registrar ' + $('autoType').textContent; }
-
-    let nextType = 'entrada';
-  function setBtnLabel(){
-    $('autoType').textContent = nextType[0].toUpperCase() + nextType.slice(1);
-    $('btnPunchSave').textContent = 'Registrar ' + $('autoType').textContent;
-  }
-
-  async function computeNextType(){
-    if (!auth.currentUser) return;
-    const day = $('pDate').value || new Date().toISOString().slice(0,10);
-
-    // lê todas as batidas do dia
-    const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
-
-    // conta pares por tipo (tudo em minúsculas por segurança)
-    const entradas = rows.filter(r => (r.type||'').toLowerCase() === 'entrada').length;
-    const saidas   = rows.filter(r => (r.type||'').toLowerCase() === 'saida').length;
-
-    // regra: se tem mais entradas que saídas, a próxima é saída; senão, entrada
-    nextType = entradas > saidas ? 'saida' : 'entrada';
-    setBtnLabel();
-  }
-
-    // recompute quando trocar a data e depois de registrar
-    $('pDate').addEventListener('change', computeNextType);
-  
-    // após salvar ponto você já chama refreshAll(); mantenha
-    // e garanta que refreshAll chama computeNextType no final:
-    // await refreshLast(); await refreshToday(); await computeNextType(); await refreshTotal();
-    
+    function setBtnLabel(){
+      $('autoType').textContent = nextType[0].toUpperCase()+nextType.slice(1);
+      $('btnPunchSave').textContent = 'Registrar ' + $('autoType').textContent;
+    }
+    async function computeNextType(){
+      if (!auth.currentUser) return;
+      const day = $('pDate').value || new Date().toISOString().slice(0,10);
+      const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
+      const entradas = rows.filter(r => (r.type||'').toLowerCase() === 'entrada').length;
+      const saidas   = rows.filter(r => (r.type||'').toLowerCase() === 'saida').length;
+      nextType = entradas > saidas ? 'saida' : 'entrada';
+      setBtnLabel();
+    }
     $('pDate').addEventListener('change', computeNextType);
 
-    // login
-    $('btnLogin').onclick=async()=>{ $('msg').textContent=''; try{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signInWithEmailAndPassword(auth,$('email').value,$('password').value);}catch(e){$('msg').textContent=e?.message||e;} };
-    $('btnRegister').onclick=async()=>{ $('msg').textContent=''; try{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); const cred=await m.createUserWithEmailAndPassword(auth,$('email').value,$('password').value); await ensureRoleDoc(cred.user.uid);}catch(e){$('msg').textContent=e?.message||e;} };
-    $('btnLogout').onclick=async(ev)=>{ ev.preventDefault(); try{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); setTimeout(()=>location.reload(),150);}catch(e){$('status').textContent='Erro ao sair: '+(e?.message||e);} };
+    // ===== auth: login / registro / sair =====
+    $('btnLogin').onclick=async()=>{
+      $('msg').textContent='';
+      try{
+        const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        await m.signInWithEmailAndPassword(auth,$('email').value,$('password').value);
+      }catch(e){ $('msg').textContent=e?.message||e; }
+    };
+    $('btnRegister').onclick=async()=>{
+      $('msg').textContent='';
+      try{
+        const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        const cred=await m.createUserWithEmailAndPassword(auth,$('email').value,$('password').value);
+        await ensureRoleDoc(cred.user.uid);
+      }catch(e){ $('msg').textContent=e?.message||e; }
+    };
+    $('btnLogout').onclick=async(ev)=>{
+      ev.preventDefault();
+      try{
+        const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        await m.signOut(auth);
+        setTimeout(()=>location.reload(),150);
+      }catch(e){ $('status').textContent='Erro ao sair: '+(e?.message||e); }
+    };
 
-    // geo
+    // ===== geo obrigatória =====
     async function getGeoOrFail(){
       if (!('geolocation' in navigator)) throw new Error('Seu navegador não suporta geolocalização.');
       return new Promise((resolve,reject)=>{
-        navigator.geolocation.getCurrentPosition(pos=>resolve(pos.coords), err=>reject(err), { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+        navigator.geolocation.getCurrentPosition(
+          pos=>resolve(pos.coords),
+          err=>reject(err),
+          { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+        );
       });
     }
 
+    // evita duplicidade (2 min)
     async function isDuplicateWithin2Min(type, at){
       const arr=await listRecentPunchesRaw(1);
       if(!arr.length) return false;
@@ -170,32 +189,35 @@
       return Math.abs(at.getTime()-last.getTime()) <= 120000;
     }
 
+    // ===== registrar ponto =====
     $('btnPunchSave').onclick = async ()=>{
       const dateISO=$('pDate').value, time=$('pTime').value, note=$('note').value||'';
       if(!dateISO || !time){ $('status').textContent='Informe data e hora.'; return; }
       const [hh,mm]=time.split(':').map(x=>parseInt(x||'0',10));
       const at = new Date(dateISO); at.setHours(hh||0, mm||0, 0, 0);
 
-      if (await isDuplicateWithin2Min(nextType, at)){ $('status').textContent='Ponto repetido muito próximo. Aguarde alguns minutos.'; return; }
+      if (await isDuplicateWithin2Min(nextType, at)){
+        $('status').textContent='Ponto repetido muito próximo. Aguarde alguns minutos.'; return;
+      }
 
       $('status').textContent='Coletando localização...';
       let geo;
-      try{ geo=await getGeoOrFail(); }catch(err){
+      try{ geo=await getGeoOrFail(); }
+      catch(err){
         $('status').textContent = (err?.code===1)?'Permita o acesso à localização.':(err?.code===3?'Tempo excedido ao obter localização.':'Não foi possível obter localização.');
         return;
       }
       if ((geo.accuracy??9999) > 150){ $('status').textContent='Sinal de GPS impreciso. Tente novamente.'; return; }
 
-      // tenta resolver site
-      let site=null; try{ site=await nearestSite(geo); }catch(_){}
+      let site=null;
+      try{ site=await nearestSite(geo); }catch(_){}
       if(!site){
-        // sem site válido: guarda na fila
+        // fora do raio → manda pra fila para sincronizar depois
         enqueuePunch({ note, type:nextType, atISO: at.toISOString(), lat:geo.latitude, lon:geo.longitude, acc:geo.accuracy||null });
-        $('status').textContent='Fora das áreas válidas agora. Ponto colocado na fila para sincronizar perto do local.';
+        $('status').textContent='Fora das áreas válidas agora. Ponto colocado na fila para sincronizar.';
         refreshQueueBadge(); return;
       }
 
-      // tenta gravar online
       $('status').textContent='Registrando ponto...';
       try{
         await addPunch(note, nextType, geo, at, site.id, site.distM, '', site.name);
@@ -203,13 +225,13 @@
         $('note').value='';
         await refreshAll();
       }catch(e){
-        // offline? coloca na fila com coords
         enqueuePunch({ note, type:nextType, atISO: at.toISOString(), lat:geo.latitude, lon:geo.longitude, acc:geo.accuracy||null });
-        $('status').textContent='Sem conexão. Ponto adicionado à fila para sincronizar depois.';
+        $('status').textContent='Sem conexão. Ponto adicionado à fila.';
         refreshQueueBadge();
       }
     };
 
+    // ===== sincronização da fila =====
     $('btnSync').onclick = async ()=>{
       $('status').textContent='Sincronizando...';
       const res = await trySyncQueue();
@@ -217,9 +239,12 @@
       refreshQueueBadge();
       await refreshAll();
     };
-    window.addEventListener('online', async ()=>{ const n=getQueue().length; if(n){ const r=await trySyncQueue(); refreshQueueBadge(); if(r.done>0) await refreshAll(); } });
+    window.addEventListener('online', async ()=>{
+      const n=getQueue().length;
+      if(n){ const r=await trySyncQueue(); refreshQueueBadge(); if(r.done>0) await refreshAll(); }
+    });
 
-    // último + hoje + total materializado
+    // ===== último, hoje e total =====
     let lastDoc=null;
     async function refreshLast(){
       const list = await listRecentPunchesRaw(1);
@@ -237,7 +262,12 @@
       const nE=rows.filter(r=>r.type==='entrada').length, nS=rows.filter(r=>r.type==='saida').length;
       show($('parityMsg'), nE!==nS);
       const ul=$('todayList'); ul.innerHTML='';
-      rows.forEach(r=>{ const dt=r.at?.toDate? r.at.toDate() : (r.ts?.toDate? r.ts.toDate() : new Date(r.ts)); const li=document.createElement('li'); li.textContent = dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ('+(r.type||'?')+') ' + (r.note? '— '+r.note:''); ul.appendChild(li); });
+      rows.forEach(r=>{
+        const dt=r.at?.toDate? r.at.toDate() : (r.ts?.toDate? r.ts.toDate() : new Date(r.ts));
+        const li=document.createElement('li');
+        li.textContent = dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ('+(r.type||'?')+') ' + (r.note? '— '+r.note:'');
+        ul.appendChild(li);
+      });
     }
     async function refreshTotal(){
       const u=auth.currentUser; if(!u) return; const today=new Date().toISOString().slice(0,10);
@@ -246,25 +276,71 @@
     }
     async function refreshAll(){ await refreshLast(); await refreshToday(); await computeNextType(); await refreshTotal(); }
 
-    // ajustes
+    // ===== ajustes =====
     let selectedTargetPath=null;
-    $('btnAdjFromLast').onclick=()=>{ if(!lastDoc) return; const when=lastDoc.at?.toDate? lastDoc.at.toDate() : (lastDoc.ts?.toDate? lastDoc.ts.toDate() : new Date()); $('adjDate').value=when.toISOString().slice(0,10); $('adjTime').value = `${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`; $('adjType').value=lastDoc.type||'entrada'; selectedTargetPath=lastDoc._path||null; window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); };
-    $('btnReqDelete').onclick=async()=>{ if(!lastDoc||!lastDoc._path){ alert('Não foi possível identificar o ponto.'); return; } const reason=prompt('Explique por que deseja excluir este ponto:')||''; try{ await requestAdjustment({ action:'delete', targetPath:lastDoc._path, type:lastDoc.type||'entrada', reason }); alert('Pedido enviado.'); }catch(e){ alert('Erro: '+(e?.message||e)); } };
-    $('btnAdjSend').onclick=async()=>{ try{ const p={ dateISO:$('adjDate').value, timeHHMM:$('adjTime').value, type:$('adjType').value, reason:$('adjReason').value||'' }; if(selectedTargetPath){ p.action='update'; p.targetPath=selectedTargetPath; } await requestAdjustment(p); $('adjMsg').textContent='Pedido enviado. Aguarde aprovação.'; $('adjReason').value=''; selectedTargetPath=null; }catch(e){ $('adjMsg').textContent='Erro: '+(e?.message||e); } };
+    $('btnAdjFromLast').onclick=()=>{
+      if(!lastDoc) return;
+      const when=lastDoc.at?.toDate? lastDoc.at.toDate() : (lastDoc.ts?.toDate? lastDoc.ts.toDate() : new Date());
+      $('adjDate').value=when.toISOString().slice(0,10);
+      $('adjTime').value = `${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
+      $('adjType').value=lastDoc.type||'entrada';
+      selectedTargetPath=lastDoc._path||null;
+      window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    };
+    $('btnReqDelete').onclick=async()=>{
+      if(!lastDoc||!lastDoc._path){ alert('Não foi possível identificar o ponto.'); return; }
+      const reason=prompt('Explique por que deseja excluir este ponto:')||'';
+      try{
+        await requestAdjustment({ action:'delete', targetPath:lastDoc._path, type:lastDoc.type||'entrada', reason });
+        alert('Pedido enviado.');
+      }catch(e){ alert('Erro: '+(e?.message||e)); }
+    };
+    $('btnAdjSend').onclick=async()=>{
+      try{
+        const p={ dateISO:$('adjDate').value, timeHHMM:$('adjTime').value, type:$('adjType').value, reason:$('adjReason').value||'' };
+        if(selectedTargetPath){ p.action='update'; p.targetPath=selectedTargetPath; }
+        await requestAdjustment(p);
+        $('adjMsg').textContent='Pedido enviado. Aguarde aprovação.';
+        $('adjReason').value=''; selectedTargetPath=null;
+      }catch(e){ $('adjMsg').textContent='Erro: '+(e?.message||e); }
+    };
 
-    // ciclo
+    // ===== ciclo de auth + saudação com NOME =====
     onUserChanged(async (user)=>{
-      const isLogged=!!user; show($('loggedOut'), !isLogged); if(!isLogged) return;
-      $('who').textContent=user.email||''; await ensureRoleDoc(user.uid); const admin=await isAdmin(user.uid);
-      show($('adminOnly'), admin); show($('loggedIn'), !admin); show($('punchCard'), !admin); show($('todayCard'), !admin); show($('lastCard'), !admin); show($('adjustCard'), !admin); show($('adminLink'), admin);
-      if(!admin){ await refreshAll(); }
-      refreshQueueBadge();
+      show($('loggedOut'), !user);
+      show($('loggedIn'),  !!user);
+      $('msg').textContent = ''; $('status').textContent = '';
+
+      if (user) {
+        const admin = await isAdmin(user.uid);
+
+        // busca perfil em roles/{uid}
+        const profile = await getUserRole(user.uid);
+        const display = (profile && profile.name)
+          ? profile.name
+          : (user.displayName || profile?.email || user.email || '');
+
+        $('who').textContent = display;
+
+        // admins não batem ponto
+        show($('adminOnly'), admin);
+        show($('punchCard'), !admin);
+        show($('todayCard'), !admin);
+        show($('lastCard'), !admin);
+        show($('adjustCard'), !admin);
+        show($('adminLink'), admin);
+
+        if(!admin){ await refreshAll(); }
+        refreshQueueBadge();
+      }
     });
 
-    // SW
-    if ('serviceWorker' in navigator) { window.addEventListener('load', ()=> navigator.serviceWorker.register('./service-worker.js').catch(()=>{}) ); }
+    // ===== SW PWA =====
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+      });
+    }
   </script>
 </body>
 </html>
-
-
