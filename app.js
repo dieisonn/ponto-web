@@ -1,12 +1,14 @@
-// app.js — Firebase + Firestore + helpers
+// app.js — integra Firebase (Auth + Firestore) e expõe helpers usados pelo site
+
 export let app, auth, db;
 let initializingPromise = null;
 
+/* Inicialização do Firebase (chame await initApp() antes de usar auth/db) */
 export async function initApp() {
   if (auth && db) return app;
   if (initializingPromise) return initializingPromise;
 
-  // TROQUE por seu config se for diferente
+  // >>>> Use seu config. Abaixo está o que você me passou. <<<<
   const firebaseConfig = {
     apiKey: "AIzaSyDst0JRbIUJMy8F7NnL15czxRYI1J1Pv7U",
     authDomain: "pontoacco.firebaseapp.com",
@@ -29,12 +31,14 @@ export async function initApp() {
   return initializingPromise;
 }
 
+/* Observa mudanças de login (login/logout) */
 export async function onUserChanged(cb) {
   await initApp();
   const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
   m.onAuthStateChanged(auth, cb);
 }
 
+/* Garante que existe um doc em roles/{uid} com role:user (1º login) */
 export async function ensureRoleDoc(uid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -43,6 +47,7 @@ export async function ensureRoleDoc(uid) {
   if (!snap.exists()) await fs.setDoc(ref, { role: 'user' }, { merge: true });
 }
 
+/* Checa se uid é admin (roles/{uid}.role == 'admin') */
 export async function isAdmin(uid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -51,30 +56,38 @@ export async function isAdmin(uid) {
   return snap.exists() && snap.data() && snap.data().role === 'admin';
 }
 
+/* Formata AAAAMM para particionar a coleção por mês */
 function yyyymm(d) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2,'0');
   return y + '' + m;
 }
 
-// ---------- Batidas ----------
+/* ===== CRUD de batidas ===== */
+
+/* Add batida (com tipo, observação e geolocalização opcional) */
 export async function addPunch(note = '', tipo = 'entrada', geo = null) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const user = auth.currentUser;
   if (!user) throw new Error('Não autenticado');
+
   const period = yyyymm(new Date());
   const ref = fs.doc(fs.collection(db, 'punches', user.uid, period));
+
   await fs.setDoc(ref, {
     ts: fs.serverTimestamp(),
     email: user.email || '',
     uid: user.uid,
-    note,
-    type: tipo,
-    geo: geo ? { lat: geo.latitude, lon: geo.longitude, acc: geo.accuracy } : null
+    note,            // observação (opcional)
+    type: tipo,      // 'entrada' | 'saida'
+    geo: geo ? {     // geolocalização (opcional)
+      lat: geo.latitude, lon: geo.longitude, acc: geo.accuracy
+    } : null
   });
 }
 
+/* Última batida do mês (para evitar duplicar) */
 export async function getLastPunch() {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -86,6 +99,7 @@ export async function getLastPunch() {
   return d ? d.data() : null;
 }
 
+/* Add batida "esperta": bloqueia 2x seguidas do mesmo tipo (em < 1 min) */
 export async function addPunchSmart(tipo, note = '', geo = null) {
   await initApp();
   const last = await getLastPunch();
@@ -98,6 +112,7 @@ export async function addPunchSmart(tipo, note = '', geo = null) {
   return addPunch(note, tipo, geo);
 }
 
+/* Lista recentes (usamos com limit=1 para mostrar só o último) */
 export async function listRecentPunches(limitN = 10) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -108,7 +123,9 @@ export async function listRecentPunches(limitN = 10) {
   return snap.docs.map(d => d.data());
 }
 
-// ---------- Consultas para total/relatórios ----------
+/* ===== Utilidades de relatório/total ===== */
+
+/* Lista batidas de um usuário em um dia (procura no mês e no anterior) */
 export async function listPunchesByDayForUser(uid, dayISO) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -123,12 +140,14 @@ export async function listPunchesByDayForUser(uid, dayISO) {
     for (let j=0; j<snap.docs.length; j++) {
       const data = snap.docs[j].data();
       const dt = data.ts && data.ts.toDate ? data.ts.toDate() : new Date(data.ts);
-      if (dt.toISOString().slice(0,10) === dayISO) rows.push(Object.assign({ _id: snap.docs[j].id }, data));
+      if (dt.toISOString().slice(0,10) === dayISO)
+        rows.push(Object.assign({ _id: snap.docs[j].id }, data));
     }
   }
   return rows;
 }
 
+/* Soma pares entrada/saída (ignora batida aberta no final) */
 export function computeDailyMs(punchesAsc) {
   const arr = punchesAsc.slice().sort(function(a,b){
     const ta = a.ts && a.ts.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime();
@@ -145,12 +164,14 @@ export function computeDailyMs(punchesAsc) {
   return total;
 }
 
+/* Formata ms -> HH:MM */
 export function msToHHMM(ms) {
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
   return (String(h).padStart(2,'0')) + ':' + (String(m).padStart(2,'0'));
 }
 
+/* Admin: lista batidas do dia de todos os users (com nome/email) */
 export async function listPunchesByDayAllUsers(dayISO) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -191,6 +212,7 @@ export async function listPunchesByDayAllUsers(dayISO) {
   return rows;
 }
 
+/* Admin: lista batidas do mês de todos os users (para relatório mensal) */
 export async function listPunchesByMonthAllUsers(yyyymmStr) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -209,7 +231,9 @@ export async function listPunchesByMonthAllUsers(yyyymmStr) {
   return rows;
 }
 
-// ---------- Ajustes ----------
+/* ===== Pedidos de ajuste ===== */
+
+/* Colaborador cria pedido */
 export async function requestAdjustment({ dateISO, timeHHMM, type, reason }) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -228,6 +252,7 @@ export async function requestAdjustment({ dateISO, timeHHMM, type, reason }) {
   });
 }
 
+/* Admin lista pendentes */
 export async function listPendingAdjustments() {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -236,6 +261,7 @@ export async function listPendingAdjustments() {
   return snap.docs.map(function(d){ const v = d.data(); v.id = d.id; return v; });
 }
 
+/* Admin aprova: grava ponto e finaliza pedido */
 export async function approveAdjustment(req, adminUid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -243,17 +269,15 @@ export async function approveAdjustment(req, adminUid) {
   const period = yyyymm(dt);
   const pRef = fs.doc(fs.collection(db, 'punches', req.uid, period));
   await fs.setDoc(pRef, {
-    ts: req.tsWanted,
-    email: req.email || '',
-    uid: req.uid,
-    note: 'Ajuste aprovado',
-    type: req.type
+    ts: req.tsWanted, email: req.email || '', uid: req.uid,
+    note: 'Ajuste aprovado', type: req.type
   });
   await fs.updateDoc(fs.doc(db,'adjust_requests', req.id), {
     status: 'approved', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid
   });
 }
 
+/* Admin rejeita pedido */
 export async function rejectAdjustment(reqId, adminUid, reason) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
