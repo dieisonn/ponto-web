@@ -35,12 +35,12 @@
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
-  <!-- ===== logado ===== -->
+  <!-- ===== logado (colaborador) ===== -->
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
 
     <!-- Batida -->
-    <div class="card">
+    <div id="punchCard" class="card">
       <h3>Bater ponto</h3>
       <div class="row">
         <label>Data:
@@ -49,15 +49,10 @@
         <label>Hora:
           <input type="time" id="pTime" step="60">
         </label>
-        <label>Tipo:
-          <select id="pType">
-            <option value="entrada">Entrada</option>
-            <option value="saida">Saída</option>
-          </select>
+        <label>Tipo (detectado):
+          <div><b id="autoType">Entrada</b></div>
         </label>
       </div>
-      <label>Local (rótulo do usuário)</label>
-      <input id="pPlace" type="text" placeholder="Ex.: Escritório, Cliente X ..." />
       <label>Motivo/Observação</label>
       <input id="note" type="text" placeholder="Opcional" />
       <div class="row">
@@ -73,14 +68,14 @@
     <p id="dailyTotal" style="font-weight:bold"></p>
 
     <!-- Histórico de hoje (pares) -->
-    <div class="card">
+    <div id="todayCard" class="card">
       <h3>Registros de hoje</h3>
       <p id="parityMsg" class="warn hidden">Atenção: Entradas e Saídas estão em quantidade diferente.</p>
       <ul id="todayList" class="clean"></ul>
     </div>
 
     <!-- Último registro + ações rápidas -->
-    <div class="card">
+    <div id="lastCard" class="card">
       <h3>Último registro</h3>
       <ul id="punchList"></ul>
       <div class="row">
@@ -90,8 +85,8 @@
       <small id="lastMeta" class="muted"></small>
     </div>
 
-    <!-- Solicitar ajuste (vai usar o ponto selecionado do histórico, quando houver) -->
-    <div class="card">
+    <!-- Solicitar ajuste -->
+    <div id="adjustCard" class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
         <label>Data: <input type="date" id="adjDate"></label>
@@ -110,6 +105,11 @@
     </div>
 
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
+  </div>
+
+  <!-- ===== mensagem para administradores ===== -->
+  <div id="adminOnly" class="card hidden">
+    <p>Você é administrador. Use o <a href="admin.html">painel do administrador</a> para gerenciar pontos, locais e solicitações.</p>
   </div>
 
   <script type="module">
@@ -134,6 +134,23 @@
     }
     setNow();
     $('btnUseNow').onclick = setNow;
+
+    // ---- detecta próximo tipo para a data selecionada ----
+    let nextType = 'entrada';
+    async function computeNextType() {
+      if (!auth.currentUser) return;
+      const day = $('pDate').value || new Date().toISOString().slice(0,10);
+      const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
+      rows.sort((a,b)=>{
+        const ta = a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime());
+        const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
+        return ta - tb;
+      });
+      if (rows.length === 0) nextType = 'entrada';
+      else nextType = rows[rows.length - 1].type === 'entrada' ? 'saida' : 'entrada';
+      $('autoType').textContent = nextType.charAt(0).toUpperCase() + nextType.slice(1);
+    }
+    $('pDate').addEventListener('change', computeNextType);
 
     // ==== login / registro / sair
     $('btnLogin').onclick = async () => {
@@ -172,13 +189,11 @@
       });
     }
 
-    // ==== registrar ponto (data/hora/tipo + geo obrigatório + geofence)
+    // ==== registrar ponto ====
     $('btnPunchSave').onclick = async () => {
       const dateISO = $('pDate').value;
       const time = $('pTime').value;
-      const tipo = $('pType').value;
       const note = $('note').value || '';
-      const place = $('pPlace').value || '';
 
       if (!dateISO || !time) { $('status').textContent = 'Informe data e hora.'; return; }
 
@@ -206,11 +221,12 @@
 
       $('status').textContent = 'Registrando ponto...';
       try {
-        await addPunch(note, tipo, geo, at, site.id, site.distM, place, site.name);
+        await addPunch(note, nextType, geo, at, site.id, site.distM, '', site.name);
         $('status').textContent = 'Ponto registrado!';
         $('note').value = '';
         await refreshLast();
         await refreshToday();
+        await computeNextType();
         try { await updateDailyTotal(); } catch (e) { console.warn('dailyTotal error:', e); }
       } catch (e) {
         const msg = (e && e.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e);
@@ -218,7 +234,7 @@
       }
     };
 
-    // ==== último registro + ações rápidas (como estava)
+    // ==== último registro + ações rápidas
     let lastDoc = null;
     async function refreshLast() {
       const list = await listRecentPunchesRaw(1);
@@ -231,8 +247,7 @@
       const when = (d.at?.toDate ? d.at.toDate() : (d.ts?.toDate ? d.ts.toDate() : new Date()));
       const tipo = d.type ? ' (' + d.type + ')' : '';
       const obs  = d.note ? ' — ' + d.note : '';
-      const plc  = d.place ? ' — [' + d.place + ']' : '';
-      li.textContent = when.toLocaleString('pt-BR') + tipo + obs + plc;
+      li.textContent = when.toLocaleString('pt-BR') + tipo + obs;
       ul.appendChild(li);
       $('lastMeta').textContent = d.siteId ? ('Local: ' + (d.siteName || d.siteId) + ' • Dist: ' + Math.round(d.distM || 0) + ' m') : '';
     }
@@ -265,13 +280,12 @@
     };
 
     // ===== HISTÓRICO DO DIA =====
-    let selectedTargetPath = null; // quando o usuário escolhe um ponto p/ ajustar
+    let selectedTargetPath = null;
 
     async function refreshToday(){
       if (!auth.currentUser) return;
       const today = new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today); // agora volta _path
-      // ordenar por horário asc
+      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
       rows.sort((a,b)=>{
         const ta = a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime());
         const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
@@ -322,7 +336,7 @@
       });
     }
 
-    // ==== ajuste manual (se veio de um ponto selecionado -> UPDATE; senão -> INCLUDE)
+    // ajuste manual
     $('btnAdjSend').onclick = async () => {
       try {
         const payload = {
@@ -342,7 +356,7 @@
       } catch (e) { $('adjMsg').textContent = 'Erro: ' + (e?.message || e); }
     };
 
-    // total do dia (com guarda)
+    // total do dia
     async function updateDailyTotal() {
       if (!auth.currentUser) return;
       const el = $('dailyTotal'); if (!el) return;
@@ -353,17 +367,31 @@
 
     // ciclo de login
     onUserChanged(async (user) => {
-      show($('loggedOut'), !user);
-      show($('loggedIn'), !!user);
-      $('who').textContent = user ? (user.email || '') : '';
+      const isLogged = !!user;
+      show($('loggedOut'), !isLogged);
+
+      if (!isLogged) return;
+
+      $('who').textContent = user.email || '';
       $('msg').textContent = ''; $('status').textContent = '';
-      if (user) {
-        await ensureRoleDoc(user.uid);
+
+      await ensureRoleDoc(user.uid);
+      const admin = await isAdmin(user.uid);
+
+      // Admin NÃO bate ponto
+      show($('adminOnly'), admin);
+      show($('loggedIn'), !admin);
+      show($('punchCard'), !admin);
+      show($('todayCard'), !admin);
+      show($('lastCard'), !admin);
+      show($('adjustCard'), !admin);
+      show($('adminLink'), admin);
+
+      if (!admin) {
         await refreshLast();
         await refreshToday();
+        await computeNextType();
         try { await updateDailyTotal(); } catch (e) { console.warn('dailyTotal error:', e); }
-        const admin = await isAdmin(user.uid);
-        show($('adminLink'), admin);
       }
     });
   </script>
