@@ -4,28 +4,27 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Marcação de Ponto</title>
-
   <style>
-    /* Estilos simples para ficar usável e limpo */
     body { font-family: system-ui, Arial; max-width: 720px; margin: 24px auto; padding: 0 12px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     button { padding: 10px 14px; border-radius: 10px; cursor: pointer; }
-    input, select { padding: 8px; border-radius: 8px; border: 1px solid #ccc; width: 100%; }
+    input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; width: 100%; }
     label { display:block; margin:8px 0 4px; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .hidden { display:none; }
+    small.muted { color:#777 }
   </style>
 </head>
 <body>
   <h1>Marcação de Ponto</h1>
 
-  <!-- ======= Tela deslogado ======= -->
+  <!-- ===== deslogado ===== -->
   <div id="loggedOut" class="card">
     <h3>Entrar</h3>
     <label>Email</label>
-    <input id="email" type="email" required />
+    <input id="email" type="email" />
     <label>Senha</label>
-    <input id="password" type="password" required />
+    <input id="password" type="password" />
     <div class="row">
       <button id="btnLogin">Login</button>
       <button id="btnRegister">Criar conta</button>
@@ -33,37 +32,57 @@
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
-  <!-- ======= Tela logado ======= -->
+  <!-- ===== logado ===== -->
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
 
-    <div class="row">
-      <button id="btnEntrada">Entrada</button>
-      <button id="btnSaida">Saída</button>
-      <button id="btnLogout" style="margin-left:auto">Sair</button>
+    <!-- Batida igual ao print (data/hora/tipo/local/motivo) -->
+    <div class="card">
+      <h3>Bater ponto</h3>
+      <div class="row">
+        <label>Data:
+          <input type="date" id="pDate">
+        </label>
+        <label>Hora:
+          <input type="time" id="pTime" step="60">
+        </label>
+        <label>Tipo:
+          <select id="pType">
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+          </select>
+        </label>
+      </div>
+      <label>Local (rótulo do usuário)</label>
+      <input id="pPlace" type="text" placeholder="Ex.: Escritório, Cliente X ..." />
+      <label>Motivo/Observação</label>
+      <input id="note" type="text" placeholder="Opcional" />
+      <div class="row">
+        <button id="btnPunchSave">Registrar ponto</button>
+        <button id="btnUseNow" type="button">Usar data/hora atuais</button>
+        <button id="btnLogout" style="margin-left:auto">Sair</button>
+      </div>
+      <p id="status"></p>
+      <small class="muted">A localização é obrigatória e validada pelo raio dos locais cadastrados.</small>
     </div>
 
-    <!-- Geo opcional -->
-    <label><input type="checkbox" id="geoOpt" /> Incluir minha localização (opcional)</label>
-
-    <label style="margin-top:8px">Observação (opcional)</label>
-    <input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
-    <p id="status"></p>
-
-    <!-- Total do dia -->
-    <p id="dailyTotal" style="font-weight:bold"></p>
-
+    <!-- Último registro (com atalhos para ajuste/exclusão) -->
     <div class="card">
       <h3>Último registro</h3>
       <ul id="punchList"></ul>
+      <div class="row">
+        <button id="btnAdjFromLast" type="button">Ajustar este ponto…</button>
+        <button id="btnReqDelete" type="button">Pedir exclusão deste ponto…</button>
+      </div>
+      <small id="lastMeta" class="muted"></small>
     </div>
 
-    <!-- Solicitar ajuste ao admin -->
+    <!-- Solicitar ajuste -->
     <div class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
         <label>Data: <input type="date" id="adjDate"></label>
-        <label>Hora: <input type="time" id="adjTime"></label>
+        <label>Hora: <input type="time" id="adjTime" step="60"></label>
         <label>Tipo:
           <select id="adjType">
             <option value="entrada">Entrada</option>
@@ -80,144 +99,159 @@
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
 
-  <!-- ======= Lógica da página ======= -->
   <script type="module">
-    /* Importa funções do app.js */
     import {
-      initApp, auth, onUserChanged, ensureRoleDoc,
-      addPunchSmart, listRecentPunches, isAdmin,
-      requestAdjustment, listPunchesByDayForUser, computeDailyMs, msToHHMM
+      initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
+      addPunch, listRecentPunchesRaw, requestAdjustment,
+      listPunchesByDayForUser, computeDailyMs, msToHHMM,
+      nearestSite   // pega site mais perto dentro do raio
     } from './app.js';
 
-    /* Inicializa Firebase (obrigatório antes de usar auth/db) */
     await initApp();
-
-    /* Helpers */
     function $(id){ return document.getElementById(id); }
-    function show(el, v){ if (el) el.classList.toggle('hidden', !v); }
+    function show(el,v){ if(el) el.classList.toggle('hidden', !v); }
 
-    /* ===== Login / Registro / Sair ===== */
-    const bLogin = $('btnLogin');
-    if (bLogin) bLogin.onclick = async function () {
-      $('msg').textContent = '';
-      try {
+    // Prefill data/hora com "agora"
+    function setNow() {
+      const now = new Date();
+      $('pDate').value = now.toISOString().slice(0,10);
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      $('pTime').value = hh + ':' + mm;
+    }
+    setNow();
+    $('btnUseNow').onclick = setNow;
+
+    // ==== login / registro / sair
+    $('btnLogin').onclick = async function(){
+      $('msg').textContent='';
+      try{
         const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signInWithEmailAndPassword(auth, $('email').value, $('password').value);
-      } catch (e) {
-        $('msg').textContent = (e && e.message) ? e.message : String(e);
-      }
+        await m.signInWithEmailAndPassword(auth,$('email').value,$('password').value);
+      }catch(e){ $('msg').textContent = e.message || String(e); }
     };
-
-    const bReg = $('btnRegister');
-    if (bReg) bReg.onclick = async function () {
-      $('msg').textContent = '';
-      try {
+    $('btnRegister').onclick = async function(){
+      $('msg').textContent='';
+      try{
         const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        const cred = await m.createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
-        await ensureRoleDoc(cred.user.uid); /* cria role 'user' no 1º login */
-      } catch (e) {
-        $('msg').textContent = (e && e.message) ? e.message : String(e);
-      }
+        const cred = await m.createUserWithEmailAndPassword(auth,$('email').value,$('password').value);
+        await ensureRoleDoc(cred.user.uid);
+      }catch(e){ $('msg').textContent = e.message || String(e); }
     };
-
-    const bLogout = $('btnLogout');
-    if (bLogout) bLogout.addEventListener('click', async function (ev) {
+    $('btnLogout').onclick = async function(ev){
       ev.preventDefault();
-      try {
+      try{
         const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
         await m.signOut(auth);
-        $('status').textContent = 'Sessão encerrada.';
         setTimeout(function(){ location.reload(); }, 150);
-      } catch (e) {
-        $('status').textContent = 'Erro ao sair: ' + ((e && e.message) ? e.message : String(e));
-      }
-    });
+      }catch(e){ $('status').textContent = 'Erro ao sair: ' + (e.message||e); }
+    };
 
-    /* ===== Registrar batida (Entrada/Saída) ===== */
-    async function doPunch(tipo) {
-      var noteEl = $('note');
-      var note = noteEl ? noteEl.value : '';
-      var geo = null;
-      var wantGeo = $('geoOpt') && $('geoOpt').checked;
-
-      $('status').textContent = 'Registrando...';
-
-      try {
-        /* Geolocalização opcional (com timeout e alta precisão) */
-        if (wantGeo && navigator.geolocation) {
-          geo = await new Promise(function(resolve){
-            navigator.geolocation.getCurrentPosition(
-              function(pos){ resolve(pos.coords); },
-              function(){ resolve(null); },
-              { enableHighAccuracy:true, timeout:8000, maximumAge:0 }
-            );
-          });
-        }
-
-        await addPunchSmart(tipo, note, geo); /* grava no Firestore */
-        $('status').textContent = 'Ponto ' + tipo + ' registrado!';
-        if (noteEl) noteEl.value = '';
-      } catch (e) {
-        $('status').textContent = 'Erro: ' + ((e && e.message) ? e.message : String(e));
-      }
-
-      await refreshPunches();      /* atualiza último registro visível */
-      await updateDailyTotal();    /* recalcula total do dia */
+    // ==== geolocalização obrigatória
+    async function getGeoOrFail() {
+      if (!('geolocation' in navigator)) throw new Error('Seu navegador não suporta geolocalização.');
+      return new Promise(function(resolve, reject){
+        navigator.geolocation.getCurrentPosition(
+          function(pos){ resolve(pos.coords); },
+          function(err){ reject(err); },
+          { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+        );
+      });
     }
 
-    const bEnt = $('btnEntrada');
-    if (bEnt) bEnt.addEventListener('click', function(){ doPunch('entrada'); });
+    // ==== registrar ponto (data/hora/tipo + geo obrigatório + geofence)
+    $('btnPunchSave').onclick = async function(){
+      const dateISO = $('pDate').value;
+      const time = $('pTime').value;
+      const tipo = $('pType').value;
+      const note = $('note').value || '';
+      const place = $('pPlace').value || '';
 
-    const bSai = $('btnSaida');
-    if (bSai) bSai.addEventListener('click', function(){ doPunch('saida'); });
+      if(!dateISO || !time){ $('status').textContent = 'Informe data e hora.'; return; }
 
-    /* ===== Mostrar SÓ o último registro ===== */
-    async function refreshPunches() {
-      const list = await listRecentPunches(1); /* busca apenas 1 */
-      const p = list[0];
-      const ul = $('punchList'); if (!ul) return;
-      ul.innerHTML = '';
-      const li = document.createElement('li');
-
-      if (!p) {
-        li.textContent = 'Sem registros ainda.';
-      } else {
-        const d = p.ts && p.ts.toDate ? p.ts.toDate() : new Date(p.ts);
-        const tipo = p.type ? ' (' + p.type + ')' : '';
-        const obs  = p.note ? ' — ' + p.note : '';
-        li.textContent = d.toLocaleString('pt-BR') + tipo + obs;
+      $('status').textContent = 'Coletando localização...';
+      let geo;
+      try{ geo = await getGeoOrFail(); }
+      catch(err){
+        $('status').textContent =
+          (err && err.code===1) ? 'Permita o acesso à localização.' :
+          (err && err.code===3) ? 'Tempo excedido ao obter localização.' :
+          'Não foi possível obter localização.';
+        return;
       }
-      ul.appendChild(li);
-    }
 
-    /* ===== Total de horas do dia (pares entrada/saída) ===== */
-    async function updateDailyTotal(){
-      if (!auth.currentUser) return;
-      const today = new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
-      $('dailyTotal').textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
-    }
+      // encontra site mais próximo dentro do raio
+      let site = null;
+      try { site = await nearestSite(geo); } catch(_) {}
+      if (!site) { $('status').textContent = 'Fora das áreas válidas para batida.'; return; }
 
-    /* ===== Ciclo de login ===== */
-    onUserChanged(async function (user) {
-      show($('loggedOut'), !user);
-      show($('loggedIn'),  !!user);
-      $('who').textContent = user ? (user.email || '') : '';
-      $('msg').textContent = '';
-      $('status').textContent = '';
-      if (user) {
-        await ensureRoleDoc(user.uid);
-        await refreshPunches();
+      // monta Date do "at" (data/hora escolhidas)
+      const hh = parseInt(time.split(':')[0],10)||0;
+      const mm = parseInt(time.split(':')[1],10)||0;
+      const at = new Date(dateISO); at.setHours(hh,mm,0,0);
+
+      $('status').textContent = 'Registrando ponto...';
+      try{
+        await addPunch(note, tipo, geo, at, site.id, site.distM, place);
+        $('status').textContent = 'Ponto registrado!';
+        $('note').value = ''; // limpa obs
+        await refreshLast();
         await updateDailyTotal();
-        const admin = await isAdmin(user.uid);
-        show($('adminLink'), admin);
+      }catch(e){
+        $('status').textContent = 'Erro: ' + (e.message || e);
       }
-    });
+    };
 
-    /* ===== Solicitar ajuste para o admin ===== */
-    const bAdj = $('btnAdjSend');
-    if (bAdj) bAdj.onclick = async function (){
+    // ==== último registro + botões de ajuste/exclusão
+    let lastDoc = null;
+    async function refreshLast(){
+      const list = await listRecentPunchesRaw(1);
+      const ul = $('punchList'); ul.innerHTML = '';
+      const li = document.createElement('li');
+      if (!list.length) {
+        lastDoc = null; li.textContent = 'Sem registros ainda.'; ul.appendChild(li); $('lastMeta').textContent=''; return;
+      }
+      const d = list[0]; lastDoc = d;
+      const when = (d.at && d.at.toDate ? d.at.toDate() : (d.ts && d.ts.toDate ? d.ts.toDate() : new Date()));
+      const tipo = d.type ? ' ('+d.type+')' : '';
+      const obs = d.note ? ' — '+d.note : '';
+      const plc = d.place ? ' — ['+d.place+']' : '';
+      li.textContent = when.toLocaleString('pt-BR') + tipo + obs + plc;
+      ul.appendChild(li);
+      $('lastMeta').textContent = d.siteId ? ('Local: ' + (d.siteName||d.siteId) + ' • Dist: ' + Math.round(d.distM||0) + ' m') : '';
+    }
+
+    // Preenche ajuste com o último registro
+    $('btnAdjFromLast').onclick = function(){
+      if (!lastDoc) return;
+      const when = lastDoc.at && lastDoc.at.toDate ? lastDoc.at.toDate()
+                  : (lastDoc.ts && lastDoc.ts.toDate ? lastDoc.ts.toDate() : new Date());
+      $('adjDate').value = when.toISOString().slice(0,10);
+      const hh = String(when.getHours()).padStart(2,'0');
+      const mm = String(when.getMinutes()).padStart(2,'0');
+      $('adjTime').value = hh+':'+mm;
+      $('adjType').value = lastDoc.type || 'entrada';
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    };
+
+    // Pedir exclusão do último registro
+    $('btnReqDelete').onclick = async function(){
+      if (!lastDoc || !lastDoc._path) { alert('Não foi possível identificar o ponto.'); return; }
+      const reason = prompt('Explique por que deseja excluir este ponto:') || '';
       try {
+        await requestAdjustment({
+          action: 'delete',
+          targetPath: lastDoc._path,
+          type: lastDoc.type || 'entrada',
+          reason: reason
+        });
+        alert('Pedido de exclusão enviado.');
+      } catch(e){ alert('Erro: ' + (e.message||e)); }
+    };
+
+    // ==== ajuste manual
+    $('btnAdjSend').onclick = async function(){
+      try{
         await requestAdjustment({
           dateISO: $('adjDate').value,
           timeHHMM: $('adjTime').value,
@@ -226,23 +260,30 @@
         });
         $('adjMsg').textContent = 'Pedido enviado. Aguarde aprovação.';
         $('adjReason').value = '';
-      } catch (e) {
-        $('adjMsg').textContent = 'Erro: ' + ((e && e.message) ? e.message : String(e));
-      }
+      }catch(e){ $('adjMsg').textContent = 'Erro: ' + (e.message||e); }
     };
 
-    /* ===== Atalhos (E/S) — ignoram quando estiver digitando ===== */
-    function isTypingTarget(el){
-      if (!el) return false;
-      var tag = el.tagName;
-      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    }
-    window.addEventListener('keydown', function(e){
+    // total do dia
+    async function updateDailyTotal(){
       if (!auth.currentUser) return;
-      if (isTypingTarget(e.target)) return;
-      var k = (e.key || '').toLowerCase();
-      if (k === 'e') doPunch('entrada');
-      if (k === 's') doPunch('saida');
+      const today = new Date().toISOString().slice(0,10);
+      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
+      $('dailyTotal').textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
+    }
+
+    // ciclo de login
+    onUserChanged(async function(user){
+      show($('loggedOut'), !user);
+      show($('loggedIn'), !!user);
+      $('who').textContent = user ? (user.email||'') : '';
+      $('msg').textContent = ''; $('status').textContent = '';
+      if (user) {
+        await ensureRoleDoc(user.uid);
+        await refreshLast();
+        await updateDailyTotal();
+        const admin = await isAdmin(user.uid);
+        show($('adminLink'), admin);
+      }
     });
   </script>
 </body>
