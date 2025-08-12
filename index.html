@@ -16,6 +16,7 @@
     ul.clean { list-style: none; padding-left: 0; }
     ul.clean li { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:6px 0; border-bottom: 1px dashed #eee; }
     .warn { color:#b00020; font-weight:600; }
+    .inline { display:flex; gap:8px; align-items:center; }
   </style>
 </head>
 <body>
@@ -67,14 +68,14 @@
     <!-- Total do dia -->
     <p id="dailyTotal" style="font-weight:bold"></p>
 
-    <!-- Histórico de hoje (pares) -->
+    <!-- Histórico de hoje -->
     <div id="todayCard" class="card">
       <h3>Registros de hoje</h3>
       <p id="parityMsg" class="warn hidden">Atenção: Entradas e Saídas estão em quantidade diferente.</p>
       <ul id="todayList" class="clean"></ul>
     </div>
 
-    <!-- Último registro + ações rápidas -->
+    <!-- Último registro + ações -->
     <div id="lastCard" class="card">
       <h3>Último registro</h3>
       <ul id="punchList"></ul>
@@ -85,7 +86,7 @@
       <small id="lastMeta" class="muted"></small>
     </div>
 
-    <!-- Solicitar ajuste -->
+    <!-- Solicitar ajuste (com templates de motivo) -->
     <div id="adjustCard" class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
@@ -98,8 +99,20 @@
           </select>
         </label>
       </div>
-      <label>Motivo</label>
+
+      <div class="row inline">
+        <label style="margin:0">Motivo</label>
+        <select id="adjReasonTpl">
+          <option value="">— Escolher motivo —</option>
+          <option>Esqueci a batida</option>
+          <option>Trabalho externo</option>
+          <option>Problema no aparelho</option>
+          <option>Intervalo fora do horário</option>
+          <option>Outro</option>
+        </select>
+      </div>
       <input id="adjReason" type="text" placeholder="Explique o ajuste..." />
+
       <button id="btnAdjSend">Enviar pedido</button>
       <p id="adjMsg"></p>
     </div>
@@ -124,7 +137,6 @@
     const $ = (id) => document.getElementById(id);
     const show = (el,v) => { if (el) el.classList.toggle('hidden', !v); };
 
-    // Prefill data/hora com "agora"
     function setNow() {
       const now = new Date();
       $('pDate').value = now.toISOString().slice(0,10);
@@ -135,7 +147,7 @@
     setNow();
     $('btnUseNow').onclick = setNow;
 
-    // ---- detecta próximo tipo para a data selecionada ----
+    // detecta próximo tipo do dia escolhido
     let nextType = 'entrada';
     async function computeNextType() {
       if (!auth.currentUser) return;
@@ -146,13 +158,12 @@
         const tb = b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime());
         return ta - tb;
       });
-      if (rows.length === 0) nextType = 'entrada';
-      else nextType = rows[rows.length - 1].type === 'entrada' ? 'saida' : 'entrada';
+      nextType = rows.length === 0 ? 'entrada' : (rows[rows.length-1].type === 'entrada' ? 'saida' : 'entrada');
       $('autoType').textContent = nextType.charAt(0).toUpperCase() + nextType.slice(1);
     }
     $('pDate').addEventListener('change', computeNextType);
 
-    // ==== login / registro / sair
+    // login/registro/sair
     $('btnLogin').onclick = async () => {
       $('msg').textContent = '';
       try {
@@ -177,7 +188,7 @@
       } catch (e) { $('status').textContent = 'Erro ao sair: ' + (e?.message || e); }
     };
 
-    // ==== geolocalização obrigatória
+    // geolocalização
     async function getGeoOrFail() {
       if (!('geolocation' in navigator)) throw new Error('Seu navegador não suporta geolocalização.');
       return new Promise((resolve, reject) => {
@@ -189,32 +200,27 @@
       });
     }
 
-    // ==== registrar ponto ====
+    // Registrar ponto
     $('btnPunchSave').onclick = async () => {
       const dateISO = $('pDate').value;
       const time = $('pTime').value;
       const note = $('note').value || '';
-
       if (!dateISO || !time) { $('status').textContent = 'Informe data e hora.'; return; }
 
       $('status').textContent = 'Coletando localização...';
       let geo;
       try { geo = await getGeoOrFail(); }
       catch (err) {
-        const msg =
-          (err && err.code===1) ? 'Permita o acesso à localização.' :
-          (err && err.code===3) ? 'Tempo excedido ao obter localização.' :
-          'Não foi possível obter localização.';
-        $('status').textContent = msg;
-        return;
+        const msg = (err?.code===1) ? 'Permita o acesso à localização.' :
+                    (err?.code===3) ? 'Tempo excedido ao obter localização.' :
+                    'Não foi possível obter localização.';
+        $('status').textContent = msg; return;
       }
 
-      // encontra site mais próximo dentro do raio
       let site = null;
       try { site = await nearestSite(geo); } catch (_) {}
       if (!site) { $('status').textContent = 'Fora das áreas válidas para batida.'; return; }
 
-      // monta Date do "at" (data/hora escolhidas)
       const hh = parseInt(time.split(':')[0],10) || 0;
       const mm = parseInt(time.split(':')[1],10) || 0;
       const at = new Date(dateISO); at.setHours(hh, mm, 0, 0);
@@ -227,14 +233,14 @@
         await refreshLast();
         await refreshToday();
         await computeNextType();
-        try { await updateDailyTotal(); } catch (e) { console.warn('dailyTotal error:', e); }
+        try { await updateDailyTotal(); } catch (e) {}
       } catch (e) {
-        const msg = (e && e.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e);
+        const msg = (e?.code === 'permission-denied') ? 'Fora das áreas permitidas ou Local inválido.' : (e?.message || e);
         $('status').textContent = 'Erro: ' + msg;
       }
     };
 
-    // ==== último registro + ações rápidas
+    // Último registro
     let lastDoc = null;
     async function refreshLast() {
       const list = await listRecentPunchesRaw(1);
@@ -251,37 +257,26 @@
       ul.appendChild(li);
       $('lastMeta').textContent = d.siteId ? ('Local: ' + (d.siteName || d.siteId) + ' • Dist: ' + Math.round(d.distM || 0) + ' m') : '';
     }
-
     $('btnAdjFromLast').onclick = () => {
       if (!lastDoc) return;
-      const when = lastDoc.at?.toDate ? lastDoc.at.toDate()
-                  : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
+      const when = lastDoc.at?.toDate ? lastDoc.at.toDate() : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
       $('adjDate').value = when.toISOString().slice(0,10);
-      const hh = String(when.getHours()).padStart(2,'0');
-      const mm = String(when.getMinutes()).padStart(2,'0');
-      $('adjTime').value = hh + ':' + mm;
+      $('adjTime').value = String(when.getHours()).padStart(2,'0') + ':' + String(when.getMinutes()).padStart(2,'0');
       $('adjType').value = lastDoc.type || 'entrada';
       selectedTargetPath = lastDoc._path || null;
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     };
-
     $('btnReqDelete').onclick = async () => {
       if (!lastDoc || !lastDoc._path) { alert('Não foi possível identificar o ponto.'); return; }
       const reason = prompt('Explique por que deseja excluir este ponto:') || '';
       try {
-        await requestAdjustment({
-          action: 'delete',
-          targetPath: lastDoc._path,
-          type: lastDoc.type || 'entrada',
-          reason
-        });
+        await requestAdjustment({ action:'delete', targetPath:lastDoc._path, type:lastDoc.type||'entrada', reason });
         alert('Pedido de exclusão enviado.');
       } catch (e) { alert('Erro: ' + (e?.message || e)); }
     };
 
-    // ===== HISTÓRICO DO DIA =====
+    // Histórico do dia
     let selectedTargetPath = null;
-
     async function refreshToday(){
       if (!auth.currentUser) return;
       const today = new Date().toISOString().slice(0,10);
@@ -292,7 +287,6 @@
         return ta - tb;
       });
 
-      // paridade
       const nE = rows.filter(r=>r.type==='entrada').length;
       const nS = rows.filter(r=>r.type==='saida').length;
       show($('parityMsg'), nE!==nS);
@@ -309,9 +303,7 @@
         btnAdj.textContent = 'Ajustar';
         btnAdj.onclick = () => {
           $('adjDate').value = dt.toISOString().slice(0,10);
-          const hh = String(dt.getHours()).padStart(2,'0');
-          const mm = String(dt.getMinutes()).padStart(2,'0');
-          $('adjTime').value = `${hh}:${mm}`;
+          $('adjTime').value = String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
           $('adjType').value = r.type || 'entrada';
           selectedTargetPath = r._path || null;
           window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
@@ -336,7 +328,15 @@
       });
     }
 
-    // ajuste manual
+    // motivo template -> preenche o input
+    $('adjReasonTpl').addEventListener('change', (e)=>{
+      if (!e.target.value) return;
+      const cur = $('adjReason').value.trim();
+      $('adjReason').value = cur ? `${cur}; ${e.target.value}` : e.target.value;
+      e.target.value = '';
+    });
+
+    // enviar ajuste (include/update)
     $('btnAdjSend').onclick = async () => {
       try {
         const payload = {
@@ -356,7 +356,6 @@
       } catch (e) { $('adjMsg').textContent = 'Erro: ' + (e?.message || e); }
     };
 
-    // total do dia
     async function updateDailyTotal() {
       if (!auth.currentUser) return;
       const el = $('dailyTotal'); if (!el) return;
@@ -365,11 +364,10 @@
       el.textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
     }
 
-    // ciclo de login
+    // ciclo de login + admins não batem ponto
     onUserChanged(async (user) => {
       const isLogged = !!user;
       show($('loggedOut'), !isLogged);
-
       if (!isLogged) return;
 
       $('who').textContent = user.email || '';
@@ -378,7 +376,6 @@
       await ensureRoleDoc(user.uid);
       const admin = await isAdmin(user.uid);
 
-      // Admin NÃO bate ponto
       show($('adminOnly'), admin);
       show($('loggedIn'), !admin);
       show($('punchCard'), !admin);
@@ -391,7 +388,7 @@
         await refreshLast();
         await refreshToday();
         await computeNextType();
-        try { await updateDailyTotal(); } catch (e) { console.warn('dailyTotal error:', e); }
+        try { await updateDailyTotal(); } catch (e) {}
       }
     });
   </script>
