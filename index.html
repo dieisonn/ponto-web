@@ -36,8 +36,6 @@
     <p>Olá, <b id="who"></b></p>
 
     <div class="row">
-      <button id="btnEntrada">Entrada</button>
-      <button id="btnSaida">Saída</button>
       <button id="btnLogout" style="margin-left:auto">Sair</button>
     </div>
 
@@ -180,7 +178,7 @@
     onUserChanged(async function (user) {
       show($('loggedOut'), !user);
       show($('loggedIn'),  !!user);
-      $('who').textContent = user ? (user.email || '') : '';
+      $('who').textContent = user ? (user.name || '') : '';
       $('msg').textContent = '';
       $('status').textContent = '';
       if (user) {
@@ -224,4 +222,5 @@
   </script>
 </body>
 </html>
+
 
