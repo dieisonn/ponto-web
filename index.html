@@ -53,6 +53,7 @@
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
 <script type="module">
+    >
   import {
     initApp,
     auth,
@@ -63,18 +64,51 @@
     isAdmin
   } from './app.js';
 
-  // garante Firebase pronto
   await initApp();
 
-  const $   = (id) => document.getElementById(id);
+  const $ = (id) => document.getElementById(id);
   const show = (el, v) => el.classList.toggle('hidden', !v);
 
-  // -------- batida --------
+  // ---------- LOGIN / REGISTRO / SAIR ----------
+  $('btnLogin').onclick = async () => {
+    $('msg').textContent = '';
+    try {
+      const { signInWithEmailAndPassword } =
+        await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await signInWithEmailAndPassword(auth, $('email').value, $('password').value);
+    } catch (e) { $('msg').textContent = e.message || String(e); }
+  };
+
+  $('btnRegister').onclick = async () => {
+    $('msg').textContent = '';
+    try {
+      const { createUserWithEmailAndPassword } =
+        await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      const cred = await createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
+      await ensureRoleDoc(cred.user.uid);
+    } catch (e) { $('msg').textContent = e.message || String(e); }
+  };
+
+  $('btnLogout').addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    try {
+      const { signOut } =
+        await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await signOut(auth);
+      $('status').textContent = 'Sessão encerrada.';
+      // garante atualização visual em qualquer cache/estado
+      setTimeout(() => location.reload(), 150);
+    } catch (e) {
+      $('status').textContent = 'Erro ao sair: ' + (e?.message || e);
+    }
+  });
+
+  // ---------- BATIDA ----------
   async function doPunch(tipo) {
     const note = $('note')?.value || '';
     $('status').textContent = 'Registrando...';
     try {
-      await addPunchSmart(tipo, note);     // salva com type: 'entrada' | 'saida'
+      await addPunchSmart(tipo, note);
       $('status').textContent = `Ponto ${tipo} registrado!`;
       if ($('note')) $('note').value = '';
     } catch (e) {
@@ -83,15 +117,13 @@
     await refreshPunches();
   }
 
-  // associa botões
-  $('btnEntrada')?.addEventListener('click', () => doPunch('entrada'));
-  $('btnSaida')?.addEventListener('click',   () => doPunch('saida'));
+  $('btnEntrada').addEventListener('click', () => doPunch('entrada'));
+  $('btnSaida').addEventListener('click',   () => doPunch('saida'));
 
-  // -------- lista últimos registros --------
+  // ---------- LISTA ÚLTIMOS ----------
   async function refreshPunches() {
     const punches = await listRecentPunches(10);
-    const ul = $('punchList');
-    if (!ul) return;
+    const ul = $('punchList'); if (!ul) return;
     ul.innerHTML = '';
     for (const p of punches) {
       const d = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
@@ -101,7 +133,7 @@
     }
   }
 
-  // -------- ciclo de login --------
+  // ---------- CICLO DE LOGIN ----------
   onUserChanged(async (user) => {
     show($('loggedOut'), !user);
     show($('loggedIn'),  !!user);
@@ -109,23 +141,31 @@
     $('msg').textContent = '';
     $('status').textContent = '';
     if (user) {
-      await ensureRoleDoc(user.uid);           // garante role 'user' por padrão
+      await ensureRoleDoc(user.uid);
       await refreshPunches();
       const admin = await isAdmin(user.uid);
       show($('adminLink'), admin);
     }
   });
 
-  // (opcional) atalhos de teclado: E = entrada, S = saída
+  // ---------- Atalhos de teclado (ignora quando estiver digitando) ----------
+  function isTypingTarget(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
   window.addEventListener('keydown', (e) => {
     if (!auth.currentUser) return;
-    if (e.key.toLowerCase() === 'e') doPunch('entrada');
-    if (e.key.toLowerCase() === 's') doPunch('saida');
+    if (isTypingTarget(e.target)) return; // <- não aciona dentro de campos
+    const k = e.key.toLowerCase();
+    if (k === 'e') doPunch('entrada');
+    if (k === 's') doPunch('saida');
   });
 </script>
 
 </body>
 </html>
+
 
 
 
