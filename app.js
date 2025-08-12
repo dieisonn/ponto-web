@@ -63,20 +63,29 @@ function yyyymm(d) {
   return `${y}${m}`;
 }
 
-export async function addPunch(note = '', tipo = 'entrada') {
+// Substitua sua função addPunch por esta versão com geolocalização opcional
+export async function addPunch(note = '', tipo = 'entrada', geo = null) {
   await initApp();
   const { serverTimestamp, collection, doc, setDoc } =
     await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+
   const user = auth.currentUser;
   if (!user) throw new Error('Não autenticado');
+
   const period = yyyymm(new Date());
   const ref = doc(collection(db, 'punches', user.uid, period));
+
   await setDoc(ref, {
     ts: serverTimestamp(),
     email: user.email || '',
     uid: user.uid,
     note,
-    type: tipo   // "entrada" | "saida"
+    type: tipo, // 'entrada' | 'saida'
+    geo: geo ? {               // <- vai gravar só se você enviar coords
+      lat: geo.latitude,
+      lon: geo.longitude,
+      acc: geo.accuracy
+    } : null
   });
 }
 
@@ -161,3 +170,4 @@ export async function addPunchSmart(tipo, note = '') {
   // grava usando a função existente
   return addPunch(note, tipo);
 }
+
