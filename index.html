@@ -118,18 +118,35 @@
     let nextType='entrada';
     function setBtnLabel(){ $('autoType').textContent = nextType[0].toUpperCase()+nextType.slice(1); $('btnPunchSave').textContent = 'Registrar ' + $('autoType').textContent; }
 
-    async function computeNextType(){
-      if (!auth.currentUser) return;
-      const day = $('pDate').value || new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
-      rows.sort((a,b)=>{
-        const ta=a.at?.toMillis? a.at.toMillis(): (a.ts?.toMillis? a.ts.toMillis(): new Date(a.ts).getTime());
-        const tb=b.at?.toMillis? b.at.toMillis(): (b.ts?.toMillis? b.ts.toMillis(): new Date(b.ts).getTime());
-        return ta-tb;
-      });
-      nextType = rows.length===0 ? 'entrada' : (rows[rows.length-1].type==='entrada'? 'saida':'entrada');
-      setBtnLabel();
-    }
+    let nextType = 'entrada';
+  function setBtnLabel(){
+    $('autoType').textContent = nextType[0].toUpperCase() + nextType.slice(1);
+    $('btnPunchSave').textContent = 'Registrar ' + $('autoType').textContent;
+  }
+
+  async function computeNextType(){
+    if (!auth.currentUser) return;
+    const day = $('pDate').value || new Date().toISOString().slice(0,10);
+
+    // lê todas as batidas do dia
+    const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
+
+    // conta pares por tipo (tudo em minúsculas por segurança)
+    const entradas = rows.filter(r => (r.type||'').toLowerCase() === 'entrada').length;
+    const saidas   = rows.filter(r => (r.type||'').toLowerCase() === 'saida').length;
+
+    // regra: se tem mais entradas que saídas, a próxima é saída; senão, entrada
+    nextType = entradas > saidas ? 'saida' : 'entrada';
+    setBtnLabel();
+  }
+
+    // recompute quando trocar a data e depois de registrar
+    $('pDate').addEventListener('change', computeNextType);
+  
+    // após salvar ponto você já chama refreshAll(); mantenha
+    // e garanta que refreshAll chama computeNextType no final:
+    // await refreshLast(); await refreshToday(); await computeNextType(); await refreshTotal();
+    
     $('pDate').addEventListener('change', computeNextType);
 
     // login
@@ -249,4 +266,5 @@
   </script>
 </body>
 </html>
+
 
