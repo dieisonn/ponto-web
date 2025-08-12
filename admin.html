@@ -3,10 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" type="image/png" href="./icons/icon-192.png">
   <title>Painel Admin - Ponto</title>
-  <link rel="manifest" href="./manifest.webmanifest">
-  <meta name="theme-color" content="#111111">
   <style>
     body { font-family: system-ui, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; }
     table { border-collapse: collapse; width: 100%; }
@@ -16,26 +13,28 @@
     .hidden { display:none; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     small.muted { color:#777; }
-    .badge { background:#111; color:#fff; border-radius:999px; padding:2px 8px; font-size:12px; }
   </style>
 </head>
 <body>
-  <h1>Painel do Administrador <span id="badgePend" class="badge hidden"></span></h1>
+  <h1>Painel do Administrador</h1>
   <p><a href="index.html">← Voltar</a></p>
 
   <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
 
   <div id="adminArea" class="hidden">
     <div class="row">
-      <label>Data:</label><input type="date" id="dayPicker" />
-      <label>Colaborador:</label><select id="userFilter"><option value="">Todos</option></select>
+      <label>Data:</label>
+      <input type="date" id="dayPicker" />
+      <label>Colaborador:</label>
+      <select id="userFilter"><option value="">Todos</option></select>
       <button id="btnLoad">Carregar</button>
       <button id="btnExport">Exportar CSV (dia)</button>
       <button id="btnLogout">Sair</button>
     </div>
 
     <div class="row" style="margin-top:8px">
-      <label>Mês:</label><input type="month" id="monthPicker" />
+      <label>Mês:</label>
+      <input type="month" id="monthPicker" />
       <button id="btnMonth">Relatório mensal</button>
       <button id="btnMonthCsv">Exportar CSV (mês)</button>
     </div>
@@ -47,42 +46,12 @@
       </table>
     </div>
 
-    <!-- Permissões por local -->
-    <div class="card">
-      <h3>Permissões por local (opcional)</h3>
-      <div class="row">
-        <label>Colaborador:</label><select id="permUser"><option value="">Selecione…</option></select>
-      </div>
-      <div id="sitesBox" class="row"></div>
-      <div class="row"><button id="btnSavePerm">Salvar permissões</button></div>
-      <small class="muted">Se nenhum local for marcado, o colaborador pode usar qualquer local ativo.</small>
-    </div>
-
-    <div class="card">
-      <h3>Locais permitidos (geofence)</h3>
-      <div class="row">
-        <label>Nome: <input id="siteName" type="text" placeholder="Ex.: Escritório" /></label>
-        <label>Lat: <input id="siteLat" type="number" step="0.000001" /></label>
-        <label>Lon: <input id="siteLon" type="number" step="0.000001" /></label>
-        <label>Raio (m): <input id="siteRadius" type="number" step="1" value="200" /></label>
-      </div>
-      <div class="row">
-        <button id="btnSiteHere">Usar minha posição</button>
-        <button id="btnSiteAdd">Adicionar local</button>
-      </div>
-      <table style="margin-top:12px">
-        <thead><tr><th>Nome</th><th>Lat</th><th>Lon</th><th>Raio (m)</th><th>Status</th></tr></thead>
-        <tbody id="tbodySites"></tbody>
-      </table>
-    </div>
-
     <div class="card">
       <h3>Pedidos de ajuste</h3>
       <table>
         <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
         <tbody id="tbodyAdj"></tbody>
       </table>
-      <div class="row"><button id="btnAdjMore">Carregar mais</button></div>
     </div>
   </div>
 
@@ -90,27 +59,27 @@
     import * as core from './app.js';
     await core.initApp();
 
-    const { auth, db, isAdmin, listPunchesByDayAllUsers,
+    const {
+      auth, db, isAdmin, listPunchesByDayAllUsers,
       listPunchesByMonthAllUsers, computeDailyMs, msToHHMM,
-      listPendingAdjustmentsPage, approveAdjustment, rejectAdjustment,
-      listSites, createSite, setUserAllowedSites } = core;
+      listPendingAdjustments, approveAdjustment, rejectAdjustment
+    } = core;
 
-    const $=(id)=>document.getElementById(id);
-    const show=(el,v)=>{ if(el) el.classList.toggle('hidden', !v); };
+    function $(id){ return document.getElementById(id); }
+    function show(el,v){ if(el) el.classList.toggle('hidden', !v); }
 
     if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
     if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
 
     async function loadUsersIntoFilter() {
-      const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-      const snap = await fs.getDocs(fs.collection(db,'roles'));
+      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+      const snap = await m.getDocs(m.collection(db,'roles'));
       const sel = $('userFilter'); sel.innerHTML = '<option value="">Todos</option>';
-      const permSel = $('permUser'); permSel.innerHTML = '<option value="">Selecione…</option>';
-      snap.forEach(doc=>{
-        const d=doc.data(); const label=d.name? `${d.name} (${d.email||''})` : (d.email||doc.id);
+      snap.forEach(function(doc){
+        const d = doc.data();
+        const label = d.name ? (d.name+' ('+(d.email||'')+')') : (d.email||doc.id);
         const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
         sel.appendChild(opt);
-        permSel.appendChild(opt.cloneNode(true));
       });
     }
 
@@ -118,108 +87,96 @@
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
       const uid = $('userFilter').value;
-      renderTable(uid ? rows.filter(r=>r.uid===uid) : rows);
+      renderTable(uid ? rows.filter(function(r){return r.uid===uid;}) : rows);
     }
+
     function renderTable(rows){
-      const tbody=$('tbody'); tbody.innerHTML='';
-      rows.forEach(r=>{
-        const d=r.at?.toDate? r.at.toDate() : (r.ts?.toDate? r.ts.toDate() : new Date(r.ts));
-        const tr=document.createElement('tr');
-        tr.innerHTML = `<td>${r.name||''}</td><td>${r.email||''}</td><td>${d.toLocaleString('pt-BR')}${r.type? ' ('+r.type+')':''}${r.note? ' — '+r.note:''}${r.siteName? ' — {'+r.siteName+'}':''}</td>`;
+      const tbody = $('tbody'); tbody.innerHTML='';
+      for (let i=0;i<rows.length;i++){
+        const r = rows[i];
+        const d = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>'+ (r.name||'') +'</td>'+
+          '<td>'+ (r.email||'') +'</td>'+
+          '<td>'+ d.toLocaleString('pt-BR')
+          + (r.type? ' ('+r.type+')':'')
+          + (r.note? ' — '+r.note:'')
+          +'</td>';
         tbody.appendChild(tr);
-      });
+      }
     }
 
     function exportTableCSV(prefix){
       const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(tr =>
-        Array.from(tr.querySelectorAll('th,td')).map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"').join(',')
-      ).join('\n');
+      const data = Array.from(rows).map(function(tr){
+        return Array.from(tr.querySelectorAll('th,td'))
+          .map(function(td){ return '"' + (td.textContent||'').replace(/"/g,'""') + '"'; }).join(',');
+      }).join('\n');
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
       a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
     }
 
     async function loadMonthly(){
-      const m=$('monthPicker').value; if(!m) return;
+      const m = $('monthPicker').value; if(!m) return;
       const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
-      const map={};
-      rows.forEach(r=>{
-        const dt=r.at?.toDate? r.at.toDate() : (r.ts?.toDate? r.ts.toDate() : new Date(r.ts));
-        const day=dt.toISOString().slice(0,10);
-        const key=r.uid+'|'+day; (map[key]=map[key]||{uid:r.uid,name:r.name,email:r.email,day,items:[]}).items.push(r);
+      const map = {};
+      rows.forEach(function(r){
+        const dt = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
+        const day = dt.toISOString().slice(0,10);
+        const key = r.uid+'|'+day;
+        (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day:day, items:[] }).items.push(r);
       });
-      const tbody=$('tbody'); tbody.innerHTML=''; const totals={};
-      Object.values(map).sort((a,b)=> a.email.localeCompare(b.email) || a.day.localeCompare(b.day) )
-        .forEach(gr=>{
-          const ms=computeDailyMs(gr.items); totals[gr.uid]=(totals[gr.uid]||0)+ms;
-          const tr=document.createElement('tr'); tr.innerHTML=`<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`; tbody.appendChild(tr);
-        });
-      Object.keys(totals).forEach(uid=>{ const any=rows.find(r=>r.uid===uid); const tr=document.createElement('tr'); tr.innerHTML=`<td><b>Total ${any&&any.name||''}</b></td><td>${any&&any.email||''}</td><td><b>${msToHHMM(totals[uid])}</b></td>`; tbody.appendChild(tr); });
-    }
-
-    // Sites
-    let cachedSites=[];
-    async function refreshSites(){
-      cachedSites = await listSites(true);
-      const tb=$('tbodySites'); tb.innerHTML='';
-      cachedSites.forEach(s=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${s.name}</td><td>${s.lat.toFixed(6)}</td><td>${s.lon.toFixed(6)}</td><td>${Math.round(s.radiusM)}</td><td>${s.active?'Ativo':'Inativo'}</td>`; tb.appendChild(tr); });
-
-      // checkboxes p/ permissões
-      const box=$('sitesBox'); box.innerHTML='';
-      cachedSites.forEach(s=>{
-        const wrap=document.createElement('label'); wrap.style.minWidth='220px';
-        wrap.innerHTML = `<input type="checkbox" value="${s.id}"> ${s.name}`;
-        box.appendChild(wrap);
-      });
-    }
-    $('btnSiteHere').onclick=()=>{ if(!navigator.geolocation){ alert('Sem geolocalização.'); return; } navigator.geolocation.getCurrentPosition(pos=>{ $('siteLat').value=pos.coords.latitude.toFixed(6); $('siteLon').value=pos.coords.longitude.toFixed(6); }, ()=>alert('Falha ao obter posição.'), {enableHighAccuracy:true,timeout:8000}); };
-    $('btnSiteAdd').onclick=async()=>{ try{ await createSite($('siteName').value.trim(), parseFloat($('siteLat').value), parseFloat($('siteLon').value), parseFloat($('siteRadius').value)||200); await refreshSites(); alert('Local adicionado.'); }catch(e){ alert('Erro: '+(e?.message||e)); } };
-
-    // Permissões por local
-    $('btnSavePerm').onclick=async()=>{
-      const uid=$('permUser').value; if(!uid) { alert('Selecione o colaborador.'); return; }
-      const ids=Array.from(document.querySelectorAll('#sitesBox input[type=checkbox]:checked')).map(el=>el.value);
-      try{ await setUserAllowedSites(uid, ids); alert('Permissões salvas.'); }catch(e){ alert('Erro: '+(e?.message||e)); }
-    };
-
-    // Pedidos de ajuste com paginação
-    let adjCursor=null;
-    async function loadAdjustments(append=false){
-      const { items, last } = await listPendingAdjustmentsPage(20, append? adjCursor:null);
-      adjCursor = last || null;
-      const tb=$('tbodyAdj'); if(!append) tb.innerHTML='';
-
-      items.forEach(r=>{
-        const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted? new Date(r.tsWanted) : null);
+      const tbody = $('tbody'); tbody.innerHTML='';
+      const totals = {};
+      Object.values(map).sort(function(a,b){
+        return a.email.localeCompare(b.email) || a.day.localeCompare(b.day);
+      }).forEach(function(gr){
+        const ms = computeDailyMs(gr.items);
+        totals[gr.uid] = (totals[gr.uid]||0)+ms;
         const tr=document.createElement('tr');
-        tr.innerHTML = `<td>${r.email||r.uid}</td><td>${r.action||'incluir'}</td><td>${r.type||'-'}</td><td>${d? d.toLocaleString('pt-BR'):'-'}</td><td>${r.reason||''}</td><td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
-        tr.querySelector('.ok').onclick=async()=>{ await approveAdjustment(r, auth.currentUser.uid); tr.remove(); await refreshBadge(); };
-        tr.querySelector('.no').onclick=async()=>{ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); tr.remove(); await refreshBadge(); };
+        tr.innerHTML='<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
+        tbody.appendChild(tr);
+      });
+      Object.keys(totals).forEach(function(uid){
+        const any = rows.find(function(r){return r.uid===uid;});
+        const tr=document.createElement('tr');
+        tr.innerHTML='<td><b>Total '+ (any&&any.name||'') +'</b></td><td>'+ (any&&any.email||'') +'</td><td><b>'+ msToHHMM(totals[uid]) +'</b></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Ajustes
+    async function loadAdjustments(){
+      const pend = await listPendingAdjustments();
+      const tb = $('tbodyAdj'); tb.innerHTML='';
+      pend.forEach(function(r){
+        const d = r.tsWanted && r.tsWanted.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
+        const tr=document.createElement('tr');
+        tr.innerHTML =
+          '<td>'+ (r.email||r.uid) +'</td>'+
+          '<td>'+ (r.action||'incluir') +'</td>'+
+          '<td>'+ (r.type||'-') +'</td>'+
+          '<td>'+ (d? d.toLocaleString("pt-BR") : '-') +'</td>'+
+          '<td>'+ (r.reason||'') +'</td>'+
+          '<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>';
+        tr.querySelector('.ok').onclick = async function(){ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
+        tr.querySelector('.no').onclick = async function(){ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
         tb.appendChild(tr);
       });
-
-      show($('btnAdjMore'), !!adjCursor);
-      await refreshBadge();
-    }
-    $('btnAdjMore').onclick = ()=> loadAdjustments(true);
-
-    async function refreshBadge(){
-      const { items } = await listPendingAdjustmentsPage(1,null); // p/ contar rápido tentamos 1, mas badge exibirá “pendentes” quando carregar list
-      const badge=$('badgePend'); // simples: mostra se temos linhas na tabela
-      const count = document.querySelectorAll('#tbodyAdj tr').length;
-      badge.textContent = `${count} pendentes`; show(badge, count>0);
     }
 
-    // topo
-    $('btnLoad').onclick=loadDaily;
-    $('btnExport').onclick=()=>{ const day=$('dayPicker').value||'dia'; const rows=Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr'); const data=Array.from(rows).map(tr=>Array.from(tr.querySelectorAll('th,td')).map(td=>'"'+(td.textContent||'').replace(/"/g,'""')+'"').join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'})); a.download='pontos_'+day.replace(/-/g,'')+'.csv'; a.click(); URL.revokeObjectURL(a.href); };
-    $('btnMonth').onclick=loadMonthly;
-    $('btnMonthCsv').onclick=()=>{ const m=$('monthPicker').value||'mes'; const rows=Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr'); const data=Array.from(rows).map(tr=>Array.from(tr.querySelectorAll('th,td')).map(td=>'"'+(td.textContent||'').replace(/"/g,'""')+'"').join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'})); a.download='relatorio_'+m.replace('-','')+'.csv'; a.click(); URL.revokeObjectURL(a.href); };
-    $('btnLogout').onclick=async()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
+    // Botões topo
+    $('btnLoad').onclick = loadDaily;
+    $('btnExport').onclick = function(){ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
+    $('btnMonth').onclick = loadMonthly;
+    $('btnMonthCsv').onclick = function(){ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
+    $('btnLogout').onclick = async function(){ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
 
+    // Gate admin
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async user=>{
+    mAuth.onAuthStateChanged(auth, async function(user){
       if(!user){ $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
       const ok = await isAdmin(user.uid);
       $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
@@ -227,13 +184,9 @@
       if(ok){
         await loadUsersIntoFilter();
         await loadDaily();
-        await refreshSites();
-        adjCursor=null; await loadAdjustments(false);
+        await loadAdjustments();
       }
     });
-
-    if ('serviceWorker' in navigator) { window.addEventListener('load', ()=> navigator.serviceWorker.register('./service-worker.js').catch(()=>{}) ); }
   </script>
 </body>
 </html>
-
