@@ -8,7 +8,7 @@
     body { font-family: system-ui, Arial; max-width: 720px; margin: 24px auto; padding: 0 12px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     button { padding: 10px 14px; border-radius: 10px; cursor: pointer; }
-    input { padding: 8px; border-radius: 8px; border:1px solid #ccc; width: 100%; }
+    input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; width: 100%; }
     label { display:block; margin:8px 0 4px; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .hidden { display:none; }
@@ -17,7 +17,7 @@
 <body>
   <h1>Marcação de Ponto</h1>
 
-  <!-- Área deslogado -->
+  <!-- Deslogado -->
   <div id="loggedOut" class="card">
     <h3>Entrar</h3>
     <label>Email</label>
@@ -31,163 +31,191 @@
     <p id="msg" style="color:#b00020;"></p>
   </div>
 
-  <!-- Área logado -->
+  <!-- Logado -->
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
 
     <div class="row">
       <button id="btnEntrada">Entrada</button>
       <button id="btnSaida">Saída</button>
-      <label><input type="checkbox" id="geoOpt" /> Incluir minha localização (opcional)</label>
       <button id="btnLogout" style="margin-left:auto">Sair</button>
     </div>
 
+    <label><input type="checkbox" id="geoOpt" /> Incluir minha localização (opcional)</label>
     <label style="margin-top:8px">Observação (opcional)</label>
     <input id="note" type="text" placeholder="Ex.: visita a cliente, almoço, etc." />
     <p id="status"></p>
+
+    <p id="dailyTotal" style="font-weight:bold"></p>
 
     <div class="card">
       <h3>Últimos registros</h3>
       <ul id="punchList"></ul>
     </div>
-    <p id="dailyTotal"></p>
+
+    <div class="card">
+      <h3>Solicitar ajuste</h3>
+      <div class="row">
+        <label>Data: <input type="date" id="adjDate"></label>
+        <label>Hora: <input type="time" id="adjTime"></label>
+        <label>Tipo:
+          <select id="adjType">
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+          </select>
+        </label>
+      </div>
+      <label>Motivo</label>
+      <input id="adjReason" type="text" placeholder="Explique o ajuste..." />
+      <button id="btnAdjSend">Enviar pedido</button>
+      <p id="adjMsg"></p>
+    </div>
+
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
   </div>
-<script type="module">
-  import {
-    initApp,
-    auth,
-    onUserChanged,
-    ensureRoleDoc,
-    addPunchSmart,
-    listRecentPunches,
-    isAdmin
-  } from './app.js';
 
-  await initApp();
+  <script type="module">
+    import {
+      initApp, auth, onUserChanged, ensureRoleDoc,
+      addPunchSmart, listRecentPunches, isAdmin,
+      requestAdjustment, listPunchesByDayForUser, computeDailyMs, msToHHMM
+    } from './app.js';
 
-  const $ = (id) => document.getElementById(id);
-  const show = (el, v) => el.classList.toggle('hidden', !v);
+    await initApp();
 
-  // ---------- LOGIN / REGISTRO / SAIR ----------
-  $('btnLogin').onclick = async () => {
-    $('msg').textContent = '';
-    try {
-      const { signInWithEmailAndPassword } =
-        await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      await signInWithEmailAndPassword(auth, $('email').value, $('password').value);
-    } catch (e) { $('msg').textContent = e.message || String(e); }
-  };
+    function $(id){ return document.getElementById(id); }
+    function show(el, v){ if (el) el.classList.toggle('hidden', !v); }
 
-  $('btnRegister').onclick = async () => {
-    $('msg').textContent = '';
-    try {
-      const { createUserWithEmailAndPassword } =
-        await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      const cred = await createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
-      await ensureRoleDoc(cred.user.uid);
-    } catch (e) { $('msg').textContent = e.message || String(e); }
-  };
+    // --- Login / Registro / Sair ---
+    $('btnLogin').onclick = async function () {
+      $('msg').textContent = '';
+      try {
+        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        await m.signInWithEmailAndPassword(auth, $('email').value, $('password').value);
+      } catch (e) { $('msg').textContent = (e && e.message) ? e.message : String(e); }
+    };
 
-  $('btnLogout').addEventListener('click', async (ev) => {
-    ev.preventDefault();
-    try {
-      const { signOut } =
-        await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      await signOut(auth);
-      $('status').textContent = 'Sessão encerrada.';
-      // garante atualização visual em qualquer cache/estado
-      setTimeout(() => location.reload(), 150);
-    } catch (e) {
-      $('status').textContent = 'Erro ao sair: ' + (e?.message || e);
-    }
-  });
+    $('btnRegister').onclick = async function () {
+      $('msg').textContent = '';
+      try {
+        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        const cred = await m.createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
+        await ensureRoleDoc(cred.user.uid);
+      } catch (e) { $('msg').textContent = (e && e.message) ? e.message : String(e); }
+    };
 
-  // ---------- BATIDA ----------
- async function doPunch(tipo) {
-  const noteEl = document.getElementById('note');
-  const note = noteEl ? noteEl.value : '';
-  const wantGeo = document.getElementById('geoOpt')?.checked;
+    $('btnLogout').addEventListener('click', async function (ev) {
+      ev.preventDefault();
+      try {
+        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        await m.signOut(auth);
+        $('status').textContent = 'Sessão encerrada.';
+        setTimeout(function(){ location.reload(); }, 150);
+      } catch (e) {
+        $('status').textContent = 'Erro ao sair: ' + ((e && e.message) ? e.message : String(e));
+      }
+    });
 
-  document.getElementById('status').textContent = 'Registrando...';
-  try {
-    let geo = null;
-    if (wantGeo && navigator.geolocation) {
-      geo = await new Promise((resolve) => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(pos.coords),
-          () => resolve(null),
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-        );
-      });
-    }
-    await addPunchSmart(tipo, note, geo);
-    document.getElementById('status').textContent = `Ponto ${tipo} registrado!`;
-    if (noteEl) noteEl.value = '';
-  } catch (e) {
-    document.getElementById('status').textContent = 'Erro: ' + (e?.message || e);
-  }
-  await refreshPunches();
-}
-  $('btnEntrada').addEventListener('click', () => doPunch('entrada'));
-  $('btnSaida').addEventListener('click',   () => doPunch('saida'));
+    // --- Batida ---
+    async function doPunch(tipo) {
+      var noteEl = $('note');
+      var note = noteEl ? noteEl.value : '';
+      var geo = null;
+      var wantGeo = $('geoOpt') && $('geoOpt').checked;
 
-  // ---------- LISTA ÚLTIMOS ----------
-  async function refreshPunches() {
-    const punches = await listRecentPunches(10);
-    const ul = $('punchList'); if (!ul) return;
-    
-    ul.innerHTML = '';
-    for (const p of punches) {
-      const d = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
-      const li = document.createElement('li');
-      li.textContent = `${d.toLocaleString('pt-BR')}${p.type ? ` (${p.type})` : ''}${p.note ? ' — ' + p.note : ''}`;
-      ul.appendChild(li);
-    }
-  }
-
-  // ---------- CICLO DE LOGIN ----------
-  onUserChanged(async (user) => {
-    // dentro do onUserChanged, após refreshPunches:
-    const today = new Date().toISOString().slice(0,10);
-    const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
-    document.getElementById('dailyTotal').textContent =
-      'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
-    show($('loggedOut'), !user);
-    show($('loggedIn'),  !!user);
-    $('who').textContent = user?.email || '';
-    $('msg').textContent = '';
-    $('status').textContent = '';
-    if (user) {
-      await ensureRoleDoc(user.uid);
+      $('status').textContent = 'Registrando...';
+      try {
+        if (wantGeo && navigator.geolocation) {
+          geo = await new Promise(function(resolve){ 
+            navigator.geolocation.getCurrentPosition(
+              function(pos){ resolve(pos.coords); },
+              function(){ resolve(null); },
+              { enableHighAccuracy:true, timeout:8000, maximumAge:0 }
+            );
+          });
+        }
+        await addPunchSmart(tipo, note, geo);
+        $('status').textContent = 'Ponto ' + tipo + ' registrado!';
+        if (noteEl) noteEl.value = '';
+      } catch (e) {
+        $('status').textContent = 'Erro: ' + ((e && e.message) ? e.message : String(e));
+      }
       await refreshPunches();
-      const admin = await isAdmin(user.uid);
-      show($('adminLink'), admin);
+      await updateDailyTotal();
     }
-  });
 
-  // ---------- Atalhos de teclado (ignora quando estiver digitando) ----------
-  function isTypingTarget(el) {
-    if (!el) return false;
-    const tag = el.tagName;
-    return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-  }
-  window.addEventListener('keydown', (e) => {
-    if (!auth.currentUser) return;
-    if (isTypingTarget(e.target)) return; // <- não aciona dentro de campos
-    const k = e.key.toLowerCase();
-    if (k === 'e') doPunch('entrada');
-    if (k === 's') doPunch('saida');
-  });
-</script>
+    $('btnEntrada').addEventListener('click', function(){ doPunch('entrada'); });
+    $('btnSaida').addEventListener('click',   function(){ doPunch('saida'); });
 
+    // --- Últimos registros ---
+    async function refreshPunches() {
+      const punches = await listRecentPunches(10);
+      const ul = $('punchList'); if (!ul) return;
+      ul.innerHTML = '';
+      for (let i=0; i<punches.length; i++) {
+        const p = punches[i];
+        const d = p.ts && p.ts.toDate ? p.ts.toDate() : new Date(p.ts);
+        const li = document.createElement('li');
+        const tipo = p.type ? ' (' + p.type + ')' : '';
+        const obs  = p.note ? ' — ' + p.note : '';
+        li.textContent = d.toLocaleString('pt-BR') + tipo + obs;
+        ul.appendChild(li);
+      }
+    }
+
+    // --- Total de horas do dia ---
+    async function updateDailyTotal(){
+      if (!auth.currentUser) return;
+      const today = new Date().toISOString().slice(0,10);
+      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
+      $('dailyTotal').textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
+    }
+
+    // --- Ciclo de login ---
+    onUserChanged(async function (user) {
+      show($('loggedOut'), !user);
+      show($('loggedIn'),  !!user);
+      $('who').textContent = user ? (user.email || '') : '';
+      $('msg').textContent = '';
+      $('status').textContent = '';
+      if (user) {
+        await ensureRoleDoc(user.uid);
+        await refreshPunches();
+        await updateDailyTotal();
+        const admin = await isAdmin(user.uid);
+        show($('adminLink'), admin);
+      }
+    });
+
+    // --- Solicitar ajuste ---
+    $('btnAdjSend').onclick = async function (){
+      try {
+        await requestAdjustment({
+          dateISO: $('adjDate').value,
+          timeHHMM: $('adjTime').value,
+          type: $('adjType').value,
+          reason: $('adjReason').value || ''
+        });
+        $('adjMsg').textContent = 'Pedido enviado. Aguarde aprovação.';
+        $('adjReason').value = '';
+      } catch (e) {
+        $('adjMsg').textContent = 'Erro: ' + ((e && e.message) ? e.message : String(e));
+      }
+    };
+
+    // Atalhos (ignora enquanto digita)
+    function isTypingTarget(el){
+      if (!el) return false;
+      var tag = el.tagName;
+      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    }
+    window.addEventListener('keydown', function(e){
+      if (!auth.currentUser) return;
+      if (isTypingTarget(e.target)) return;
+      var k = (e.key || '').toLowerCase();
+      if (k === 'e') doPunch('entrada');
+      if (k === 's') doPunch('saida');
+    });
+  </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
