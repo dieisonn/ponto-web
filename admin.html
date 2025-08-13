@@ -5,18 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Painel Admin - Ponto</title>
   <style>
-    :root { --gap:12px; }
+    :root { --gap: 12px; }
     * { box-sizing: border-box; }
     body { font-family: system-ui, Arial; max-width: 1100px; margin: 24px auto; padding: 0 12px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
-    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; margin: 8px 0; }
-    .row > * { margin: 4px 0; }
+    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; }
+    .hidden { display:none; }
     table { border-collapse: collapse; width: 100%; }
-    th, td { border:1px solid #ddd; padding:8px; font-size: 14px; }
+    th, td { border:1px solid #ddd; padding:8px; }
     th { background:#f7f7f7; text-align:left; }
     button { padding: 10px 14px; border-radius: 10px; cursor: pointer; border:1px solid #bbb; background:#fff; }
     input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; }
-    input[type="date"], input[type="month"] { min-width: 160px; }
     .muted { color:#777; }
   </style>
 </head>
@@ -27,19 +26,19 @@
   <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
 
   <div id="adminArea" class="hidden">
-    <!-- Filtros diários -->
     <div class="row">
-      <label>Data:<br><input type="date" id="dayPicker" /></label>
-      <label>Colaborador:<br><select id="userFilter"><option value="">Todos</option></select></label>
+      <label>Data: <input type="date" id="dayPicker" /></label>
+      <label>Colaborador:
+        <select id="userFilter"><option value="">Todos</option></select>
+      </label>
       <button id="btnLoad">Carregar</button>
-      <button id="btnCsvDay">Exportar CSV (dia)</button>
+      <button id="btnExport">Exportar CSV (dia)</button>
       <span style="flex:1 1 auto"></span>
       <button id="btnLogout">Sair</button>
     </div>
 
-    <!-- Relatório mensal -->
-    <div class="row" style="margin-top:8px">
-      <label>Mês:<br><input type="month" id="monthPicker" /></label>
+    <div class="row">
+      <label>Mês: <input type="month" id="monthPicker" /></label>
       <button id="btnMonth">Relatório mensal</button>
       <button id="btnMonthCsv">Exportar CSV (mês)</button>
     </div>
@@ -51,34 +50,11 @@
       </table>
     </div>
 
-    <!-- Agora -->
     <div class="card">
-      <h3>Agora</h3>
-      <table>
-        <thead><tr><th>Colaborador</th><th>Email</th><th>Status</th><th>Desde</th></tr></thead>
-        <tbody id="tbodyNow"></tbody>
-      </table>
-      <small class="muted">Baseado no último registro de hoje: “entrada” = em trabalho, “saída” = em intervalo.</small>
-    </div>
-
-    <!-- Jornada -->
-    <div class="card">
-      <h3>Jornada de trabalho do colaborador</h3>
       <div class="row">
-        <label>Colaborador:<br><select id="schedUser"></select></label>
-        <button id="btnSchedLoad">Carregar jornada</button>
+        <h3 style="margin:0">Pedidos de ajuste</h3>
+        <button id="btnAdjRefresh">Atualizar pedidos</button>
       </div>
-      <table>
-        <thead><tr><th>Dia</th><th>Ativo</th><th>Início</th><th>Fim</th><th>Pausa (min)</th></tr></thead>
-        <tbody id="tbodySched"></tbody>
-      </table>
-      <div class="row"><button id="btnSchedSave">Salvar jornada</button></div>
-    </div>
-
-    <!-- Ajustes -->
-    <div class="card">
-      <h3>Pedidos de ajuste</h3>
-      <button id="btnAdjRefresh">Atualizar pedidos</button>
       <table>
         <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
         <tbody id="tbodyAdj"></tbody>
@@ -91,59 +67,65 @@
     await core.initApp();
 
     const {
-      auth, isAdmin, listPunchesByDayAllUsers, listPunchesByMonthAllUsers,
-      computeDailyMs, msToHHMM, listPendingAdjustments, approveAdjustment, rejectAdjustment,
-      getSchedule, saveSchedule, todayStatus, getUserProfile
+      auth, db, isAdmin, listPunchesByDayAllUsers,
+      listPunchesByMonthAllUsers, computeDailyMs, msToHHMM,
+      listPendingAdjustments, approveAdjustment, rejectAdjustment
     } = core;
 
-    const $ = id => document.getElementById(id);
-    const show = (el,v) => el && el.classList.toggle('hidden', !v);
+    const $ = (id) => document.getElementById(id);
+    const show = (el, v) => el && el.classList.toggle('hidden', !v);
 
-    if ($('dayPicker'))   $('dayPicker').value   = new Date().toISOString().slice(0,10);
-    if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
+    // Defaults
+    $('dayPicker').value = new Date().toISOString().slice(0,10);
+    $('monthPicker').value = new Date().toISOString().slice(0,7);
 
-    async function loadUsersIntoFilters() {
+    // Carrega lista de usuários no filtro
+    async function loadUsersIntoFilter() {
       const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-      const snap = await fs.getDocs(fs.collection(core.db, 'roles'));
-      const sel1 = $('userFilter'); sel1.innerHTML = '<option value="">Todos</option>';
-      const sel2 = $('schedUser');  sel2.innerHTML = '';
+      const snap = await fs.getDocs(fs.collection(db, 'roles'));
+      const sel = $('userFilter'); sel.innerHTML = '<option value="">Todos</option>';
       snap.forEach(doc => {
         const d = doc.data();
-        const label = (d.name || '') + (d.email ? ` (${d.email})` : '') || doc.id;
-        const o1 = document.createElement('option'); o1.value = doc.id; o1.textContent = label;
-        const o2 = o1.cloneNode(true);
-        sel1.appendChild(o1);
-        sel2.appendChild(o2);
+        const label = d.name ? `${d.name} (${d.email||''})` : (d.email || doc.id);
+        const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
+        sel.appendChild(opt);
       });
     }
 
-    async function renderDay() {
+    // Render dia
+    async function loadDaily() {
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
       const uid = $('userFilter').value;
-      const filtered = uid ? rows.filter(r => r.uid === uid) : rows;
-      const tb = $('tbody'); tb.innerHTML = '';
-      for (const r of filtered) {
+      renderTable(uid ? rows.filter(r => r.uid === uid) : rows);
+    }
+    function renderTable(rows) {
+      const tbody = $('tbody'); tbody.innerHTML = '';
+      rows.forEach(r => {
         const d = r.at?.toDate?.() || r.ts?.toDate?.() || new Date(r.ts);
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.name||''}</td><td>${r.email||''}</td><td>${d.toLocaleString('pt-BR')}${r.type? ' ('+r.type+')':''}${r.note? ' — '+r.note:''}</td>`;
-        tb.appendChild(tr);
-      }
+        tr.innerHTML =
+          `<td>${r.name||''}</td><td>${r.email||''}</td>` +
+          `<td>${d.toLocaleString('pt-BR')}${r.type?` (${r.type})`:''}${r.note?` — ${r.note}`:''}</td>`;
+        tbody.appendChild(tr);
+      });
     }
 
-    function exportTableCSV(prefix){
+    // Export CSV (primeira tabela da página)
+    function exportTableCSV(prefix) {
       const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
       const data = Array.from(rows).map(tr =>
         Array.from(tr.querySelectorAll('th,td'))
-          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"').join(',')
+          .map(td => `"${(td.textContent||'').replace(/"/g,'""')}"`).join(',')
       ).join('\n');
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
       a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
     }
 
-    async function renderMonth() {
-      const m = $('monthPicker').value; if(!m) return;
+    // Relatório mensal
+    async function loadMonthly() {
+      const m = $('monthPicker').value; if (!m) return;
       const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
       const map = {};
       rows.forEach(r => {
@@ -152,139 +134,74 @@
         const key = r.uid + '|' + day;
         (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day, items:[] }).items.push(r);
       });
-      const tb = $('tbody'); tb.innerHTML = '';
-      Object.values(map).sort((a,b) => a.email.localeCompare(b.email) || a.day.localeCompare(b.day))
-        .forEach(gr => {
-          const ms = computeDailyMs(gr.items);
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`;
-          tb.appendChild(tr);
-        });
-    }
 
-    // ===== Agora
-    async function renderNow() {
-      const day = $('dayPicker').value;
-      const rows = await listPunchesByDayAllUsers(day);
-      const by = {};
-      for (const r of rows) (by[r.uid] = by[r.uid] || {name:r.name,email:r.email, items:[]}).items.push(r);
-      const tb = $('tbodyNow'); tb.innerHTML = '';
-      for (const uid of Object.keys(by)) {
-        const arr = by[uid].items.sort((a,b) => {
-          const ta=(a.at?.toMillis?.()||a.ts?.toMillis?.()||new Date(a.ts).getTime());
-          const tbm=(b.at?.toMillis?.()||b.ts?.toMillis?.()||new Date(b.ts).getTime());
-          return ta - tbm;
-        });
-        const st = todayStatus(arr);
+      const tbody = $('tbody'); tbody.innerHTML = '';
+      const totals = {};
+      Object.values(map).sort((a,b) =>
+        (a.email||'').localeCompare(b.email||'') || a.day.localeCompare(b.day)
+      ).forEach(gr => {
+        const ms = computeDailyMs(gr.items);
+        totals[gr.uid] = (totals[gr.uid]||0) + ms;
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${by[uid].name||''}</td>
-                        <td>${by[uid].email||''}</td>
-                        <td>${st.status}</td>
-                        <td>${st.since ? st.since.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '-'}</td>`;
-        tb.appendChild(tr);
-      }
-    }
-
-    // ===== Jornada
-    const WEEK = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-    function trSchedRow(idx, row) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${WEEK[idx]}</td>
-        <td style="text-align:center"><input type="checkbox" data-d="${idx}" class="s-active" ${row.active?'checked':''}></td>
-        <td><input type="time" value="${row.start||'08:00'}" data-d="${idx}" class="s-start"></td>
-        <td><input type="time" value="${row.end||'17:00'}"   data-d="${idx}" class="s-end"></td>
-        <td><input type="number" value="${row.breakMin||60}" min="0" data-d="${idx}" class="s-break" style="width:110px"></td>
-      `;
-      return tr;
-    }
-    async function loadSched() {
-      const uid = $('schedUser').value; if (!uid) return;
-      const data = await getSchedule(uid);
-      const w = data.weekly || {};
-      const tb = $('tbodySched'); tb.innerHTML = '';
-      for (let d=0; d<7; d++) tb.appendChild(trSchedRow(d, w[d] || {active:false,start:'00:00',end:'00:00',breakMin:0}));
-    }
-    async function saveSched() {
-      const uid = $('schedUser').value; if (!uid) return;
-      const weekly = {};
-      document.querySelectorAll('.s-active').forEach(chk => {
-        const d = Number(chk.dataset.d);
-        const start = document.querySelector(`.s-start[data-d="${d}"]`).value || '00:00';
-        const end   = document.querySelector(`.s-end[data-d="${d}"]`).value   || '00:00';
-        const br    = Number(document.querySelector(`.s-break[data-d="${d}"]`).value || 0);
-        weekly[d] = { active: chk.checked, start, end, breakMin: br };
+        tr.innerHTML = `<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`;
+        tbody.appendChild(tr);
       });
-      await saveSchedule(uid, weekly);
-      alert('Jornada salva.');
+      Object.keys(totals).forEach(uid => {
+        const any = rows.find(r => r.uid === uid);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><b>Total ${any?.name||''}</b></td><td>${any?.email||''}</td><td><b>${msToHHMM(totals[uid])}</b></td>`;
+        tbody.appendChild(tr);
+      });
     }
 
-    // ===== Ajustes
+    // Pedidos de ajuste
     async function loadAdjustments() {
       const pend = await listPendingAdjustments();
       const tb = $('tbodyAdj'); tb.innerHTML = '';
-      for (const r of pend) {
-        const prof = await getUserProfile(r.uid);
+      pend.forEach(r => {
         const d = r.tsWanted?.toDate?.() || (r.tsWanted ? new Date(r.tsWanted) : null);
-        const tr=document.createElement('tr');
+        const tr = document.createElement('tr');
         tr.innerHTML =
-          `<td>${prof?.name || r.email || r.uid}</td>
-           <td>${r.action||'incluir'}</td>
-           <td>${r.type||'-'}</td>
-           <td>${d? d.toLocaleString("pt-BR") : '-'}</td>
-           <td>${r.reason||''}</td>
-           <td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
+          `<td>${r.email||r.uid}</td>` +
+          `<td>${r.action||'include'}</td>` +
+          `<td>${r.type||'-'}</td>` +
+          `<td>${d ? d.toLocaleString('pt-BR') : '-'}</td>` +
+          `<td>${r.reason||''}</td>` +
+          `<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
         tr.querySelector('.ok').onclick = async () => { await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
-        tr.querySelector('.no').onclick = async () => { const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
+        tr.querySelector('.no').onclick = async () => { const why = prompt('Motivo (opcional):') || ''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
         tb.appendChild(tr);
-      }
+      });
     }
 
-    // Botões topo
-    $('btnLoad').onclick = async () => { await renderDay(); await renderNow(); };
-    $('btnCsvDay').onclick = () => { const day=$('dayPicker').value||'dia'; 
-      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(tr =>
-        Array.from(tr.querySelectorAll('th,td'))
-          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"').join(',')
-      ).join('\n');
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
-      a.download = 'pontos_'+day.replace(/-/g,'')+'.csv'; a.click(); URL.revokeObjectURL(a.href);
-    };
-    $('btnMonth').onclick   = renderMonth;
-    $('btnMonthCsv').onclick= () => { const m=$('monthPicker').value||'mes';
-      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(tr =>
-        Array.from(tr.querySelectorAll('th,td'))
-          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"').join(',')
-      ).join('\n');
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
-      a.download = 'relatorio_'+m.replace('-','')+'.csv'; a.click(); URL.revokeObjectURL(a.href);
-    };
-    $('btnLogout').onclick  = async () => { const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
-
+    // Botões
+    $('btnLoad').onclick = loadDaily;
+    $('btnExport').onclick = () => exportTableCSV(`pontos_${($('dayPicker').value||'dia').replace(/-/g,'')}`);
+    $('btnMonth').onclick = loadMonthly;
+    $('btnMonthCsv').onclick = () => exportTableCSV(`relatorio_${($('monthPicker').value||'mes').replace('-','')}`);
     $('btnAdjRefresh').onclick = loadAdjustments;
-    $('btnSchedLoad').onclick  = loadSched;
-    $('btnSchedSave').onclick  = saveSched;
-
-    // Gate admin
-    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async (user) => {
-      if (!user) { $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
-      const ok = await isAdmin(user.uid);
-      $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
-      show($('adminArea'), ok);
-      if (ok) {
-        await loadUsersIntoFilters();
-        await renderDay();
-        await renderNow();
-        await loadAdjustments();
-        await loadSched();
-      }
+    $('btnLogout').onclick = async () => {
+      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await m.signOut(auth); location.href = 'index.html';
     };
+
+    // Gate admin robusto
+    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'));
+    mAuth.onAuthStateChanged(auth, async (user) => {
+      if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
+      try {
+        const ok = await isAdmin(user.uid);
+        $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
+        show($('adminArea'), ok);
+        if (ok) {
+          await loadUsersIntoFilter();
+          await loadDaily();
+          await loadAdjustments();
+        }
+      } catch (e) {
+        $('gateStatus').textContent = 'Erro ao verificar: ' + (e.message||e);
+      }
+    });
   </script>
 </body>
 </html>
-
