@@ -7,12 +7,11 @@
   <style>
     body { font-family: system-ui, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; }
     table { border-collapse: collapse; width: 100%; }
-    th, td { border:1px solid #ddd; padding:8px; }
-    th { background:#f7f7f7; text-align:left; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+    th { background:#f7f7f7; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 8px 0; }
     .hidden { display:none; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    small.muted { color:#777; }
   </style>
 </head>
 <body>
@@ -22,21 +21,18 @@
   <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
 
   <div id="adminArea" class="hidden">
-    <!-- Filtros diários -->
     <div class="row">
-      <label>Data:</label>
-      <input type="date" id="dayPicker" />
-      <label>Colaborador:</label>
-      <select id="userFilter"><option value="">Todos</option></select>
+      <label>Data: <input id="dayPicker" type="date"></label>
+      <label>Colaborador:
+        <select id="userFilter"><option value="">Todos</option></select>
+      </label>
       <button id="btnLoad">Carregar</button>
       <button id="btnExport">Exportar CSV (dia)</button>
-      <button id="btnLogout" class="right">Sair</button>
+      <button id="btnLogout">Sair</button>
     </div>
 
-    <!-- Relatório mensal -->
     <div class="row" style="margin-top:8px">
-      <label>Mês:</label>
-      <input type="month" id="monthPicker" />
+      <label>Mês: <input id="monthPicker" type="month"></label>
       <button id="btnMonth">Relatório mensal</button>
       <button id="btnMonthCsv">Exportar CSV (mês)</button>
     </div>
@@ -48,13 +44,10 @@
       </table>
     </div>
 
-    <!-- Pedidos de ajuste -->
     <div class="card">
       <h3>Pedidos de ajuste</h3>
-      <div class="row">
-        <button id="btnAdjReload">Atualizar pedidos</button>
-      </div>
-      <table>
+      <button id="btnAdjReload">Atualizar pedidos</button>
+      <table style="margin-top:8px">
         <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
         <tbody id="tbodyAdj"></tbody>
       </table>
@@ -65,130 +58,123 @@
     import * as core from './app.js';
     await core.initApp();
 
-    const {
-      auth, db, isAdmin, listPunchesByDayAllUsers,
-      listPunchesByMonthAllUsers, computeDailyMs, msToHHMM,
-      listPendingAdjustments, approveAdjustment, rejectAdjustment
-    } = core;
+    const { auth, isAdmin, listPunchesByDayAllUsers, listPunchesByMonthAllUsers,
+            computeDailyMs, msToHHMM, listPendingAdjustments,
+            approveAdjustment, rejectAdjustment } = core;
 
-    function $(id){ return document.getElementById(id); }
-    function show(el,v){ if(el) el.classList.toggle('hidden', !v); }
+    const $ = id => document.getElementById(id);
+    const show = (el, v) => el.classList.toggle('hidden', !v);
 
-    if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
-    if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
+    $('dayPicker').value   = new Date().toISOString().slice(0,10);
+    $('monthPicker').value = new Date().toISOString().slice(0,7);
 
     async function loadUsersIntoFilter() {
-      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-      const snap = await m.getDocs(m.collection(db,'roles'));
+      const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+      const snap = await fs.getDocs(fs.collection(core.db,'roles'));
       const sel = $('userFilter'); sel.innerHTML = '<option value="">Todos</option>';
-      snap.forEach(function(doc){
+      snap.forEach(doc => {
         const d = doc.data();
-        const name = d.name || (d.email ? d.email.split('@')[0] : '');
-        const label = name ? `${name} (${d.email||''})` : (d.email||doc.id);
+        const label = d.name ? `${d.name} (${d.email||''})` : (d.email||doc.id);
         const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
         sel.appendChild(opt);
       });
     }
 
-    async function loadDaily(){
-      const day = $('dayPicker').value;
-      const rows = await listPunchesByDayAllUsers(day);
-      const uid = $('userFilter').value;
-      renderTable(uid ? rows.filter(function(r){return r.uid===uid;}) : rows);
-    }
-
-    function renderTable(rows){
-      const tbody = $('tbody'); tbody.innerHTML='';
-      for (let i=0;i<rows.length;i++){
-        const r = rows[i];
-        const d = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
+    function renderTable(rows) {
+      const tb = $('tbody'); tb.innerHTML = '';
+      rows.forEach(r => {
+        const d = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date());
         const tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>'+ (r.name||'') +'</td>'+
-          '<td>'+ (r.email||'') +'</td>'+
-          '<td>'+ d.toLocaleString('pt-BR')
-          + (r.type? ' ('+r.type+')':'')
-          + (r.note? ' — '+r.note:'')
-          +'</td>';
-        tbody.appendChild(tr);
-      }
-    }
-
-    function exportTableCSV(prefix){
-      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(function(tr){
-        return Array.from(tr.querySelectorAll('th,td'))
-          .map(function(td){ return '"' + (td.textContent||'').replace(/"/g,'""') + '"'; }).join(',');
-      }).join('\n');
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
-      a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
-    }
-
-    async function loadMonthly(){
-      const m = $('monthPicker').value; if(!m) return;
-      const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
-      const map = {};
-      rows.forEach(function(r){
-        const dt = r.at && r.at.toDate ? r.at.toDate() : (r.ts && r.ts.toDate ? r.ts.toDate() : new Date(r.ts));
-        const day = dt.toISOString().slice(0,10);
-        const key = r.uid+'|'+day;
-        (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day:day, items:[] }).items.push(r);
-      });
-      const tbody = $('tbody'); tbody.innerHTML='';
-      const totals = {};
-      Object.values(map).sort(function(a,b){
-        return a.email.localeCompare(b.email) || a.day.localeCompare(b.day);
-      }).forEach(function(gr){
-        const ms = computeDailyMs(gr.items);
-        totals[gr.uid] = (totals[gr.uid]||0)+ms;
-        const tr=document.createElement('tr');
-        tr.innerHTML='<td>'+ (gr.name||'') +'</td><td>'+ (gr.email||'') +'</td><td>'+ gr.day +' — '+ msToHHMM(ms) +'</td>';
-        tbody.appendChild(tr);
-      });
-      Object.keys(totals).forEach(function(uid){
-        const any = rows.find(function(r){return r.uid===uid;});
-        const tr=document.createElement('tr');
-        tr.innerHTML='<td><b>Total '+ (any&&any.name||'') +'</b></td><td>'+ (any&&any.email||'') +'</td><td><b>'+ msToHHMM(totals[uid]) +'</b></td>';
-        tbody.appendChild(tr);
-      });
-    }
-
-    async function loadAdjustments(){
-      const pend = await listPendingAdjustments();
-      const tb = $('tbodyAdj'); tb.innerHTML='';
-      pend.forEach(function(r){
-        const d = r.tsWanted && r.tsWanted.toDate ? r.tsWanted.toDate() : (r.tsWanted?new Date(r.tsWanted):null);
-        const tr=document.createElement('tr');
-        tr.innerHTML =
-          '<td>'+ (r.email||r.uid) +'</td>'+
-          '<td>'+ (r.action||'incluir') +'</td>'+
-          '<td>'+ (r.type||'-') +'</td>'+
-          '<td>'+ (d? d.toLocaleString("pt-BR") : '-') +'</td>'+
-          '<td>'+ (r.reason||'') +'</td>'+
-          '<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>';
-        tr.querySelector('.ok').onclick = async function(){ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
-        tr.querySelector('.no').onclick = async function(){ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
+        tr.innerHTML = `<td>${r.name||''}</td><td>${r.email||''}</td>
+                        <td>${d.toLocaleString('pt-BR')} (${r.type})${r.note ? ' — '+r.note : ''}</td>`;
         tb.appendChild(tr);
       });
     }
 
-    // Botões topo
-    $('btnLoad').onclick = loadDaily;
-    $('btnExport').onclick = function(){ const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
-    $('btnMonth').onclick = loadMonthly;
-    $('btnMonthCsv').onclick = function(){ const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
-    $('btnAdjReload').onclick = loadAdjustments;
-    $('btnLogout').onclick = async function(){ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
+    async function loadDaily() {
+      const day = $('dayPicker').value;
+      let rows = await listPunchesByDayAllUsers(day);
+      const uid = $('userFilter').value;
+      if (uid) rows = rows.filter(r => r.uid === uid);
+      renderTable(rows);
+    }
 
-    // Gate admin
+    function exportTableCSV(prefix) {
+      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
+      const data = Array.from(rows).map(tr =>
+        Array.from(tr.querySelectorAll('th,td'))
+          .map(td => `"${(td.textContent||'').replace(/"/g,'""')}"`).join(',')
+      ).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
+      a.download = `${prefix}.csv`; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    async function loadMonthly() {
+      const m = $('monthPicker').value; if (!m) return;
+      const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
+      const map = {};
+      rows.forEach(r => {
+        const dt = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date());
+        const day = dt.toISOString().slice(0,10);
+        const key = r.uid + '|' + day;
+        (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day, items:[] }).items.push(r);
+      });
+
+      const tb = $('tbody'); tb.innerHTML = '';
+      const totals = {};
+      Object.values(map).sort((a,b) =>
+        (a.email||'').localeCompare(b.email||'') || a.day.localeCompare(b.day)
+      ).forEach(gr => {
+        const ms = computeDailyMs(gr.items);
+        totals[gr.uid] = (totals[gr.uid]||0) + ms;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`;
+        tb.appendChild(tr);
+      });
+
+      Object.keys(totals).forEach(uid => {
+        const any = rows.find(r => r.uid === uid);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><b>Total ${any?.name||''}</b></td><td>${any?.email||''}</td><td><b>${msToHHMM(totals[uid])}</b></td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    async function loadAdjustments() {
+      const pend = await listPendingAdjustments();
+      const tb = $('tbodyAdj'); tb.innerHTML = '';
+      pend.forEach(r => {
+        const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted ? new Date(r.tsWanted) : null);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.email||r.uid}</td><td>${r.action||'include'}</td><td>${r.type||'-'}</td>
+                        <td>${d ? d.toLocaleString('pt-BR') : '-'}</td><td>${r.reason||''}</td>
+                        <td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
+        tr.querySelector('.ok').onclick = async () => { await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
+        tr.querySelector('.no').onclick = async () => {
+          const why = prompt('Motivo (opcional):') || ''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments();
+        };
+        tb.appendChild(tr);
+      });
+    }
+
+    $('btnLoad').onclick = loadDaily;
+    $('btnExport').onclick = () => exportTableCSV('pontos_' + ($('dayPicker').value||'dia').replace(/-/g,''));
+    $('btnMonth').onclick = loadMonthly;
+    $('btnMonthCsv').onclick = () => exportTableCSV('relatorio_' + ($('monthPicker').value||'mes').replace('-',''));
+    $('btnAdjReload').onclick = loadAdjustments;
+    $('btnLogout').onclick = async () => {
+      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await m.signOut(auth); location.href = 'index.html';
+    };
+
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async function(user){
-      if(!user){ $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
+    mAuth.onAuthStateChanged(auth, async (user) => {
+      if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
       const ok = await isAdmin(user.uid);
       $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
       show($('adminArea'), ok);
-      if(ok){
+      if (ok) {
         await loadUsersIntoFilter();
         await loadDaily();
         await loadAdjustments();
