@@ -186,7 +186,7 @@
     };
 
     // Gate admin robusto
-    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'));
+    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     mAuth.onAuthStateChanged(auth, async (user) => {
       if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
       try {
@@ -205,4 +205,5 @@
   </script>
 </body>
 </html>
+
 
