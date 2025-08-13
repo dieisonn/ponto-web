@@ -1,13 +1,11 @@
-// app.js — Firebase + Firestore (sem geofence) + utilitários
+// app.js — Firebase + Ponto (sem geolocalização) + consultas dia/mês + ajustes
 
 export let app, auth, db;
-let initializingPromise = null;
+let boot;
 
-export async function initApp() {
-  if (auth && db) return app;
-  if (initializingPromise) return initializingPromise;
-
-  const firebaseConfig = {
+export async function initApp(){
+  if (boot) return boot;
+  const cfg = {
     apiKey: "AIzaSyDst0JRbIUJMy8F7NnL15czxRYI1J1Pv7U",
     authDomain: "pontoacco.firebaseapp.com",
     projectId: "pontoacco",
@@ -15,239 +13,238 @@ export async function initApp() {
     messagingSenderId: "937835585493",
     appId: "1:937835585493:web:c58497ea4baa9a8456675c"
   };
-
-  initializingPromise = (async () => {
-    const appModule  = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js');
+  boot = (async ()=>{
+    const appModule = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js');
     const authModule = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     const fsModule   = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-    app = appModule.initializeApp(firebaseConfig);
+    app = appModule.initializeApp(cfg);
     auth = authModule.getAuth(app);
-    db  = fsModule.getFirestore(app);
+    db   = fsModule.getFirestore(app);
     return app;
   })();
-
-  return initializingPromise;
+  return boot;
 }
 
-/* ===== helpers roles ===== */
-export async function onUserChanged(cb) {
+/* ===== helpers ===== */
+export async function onUserChanged(cb){
   await initApp();
   (await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js')).onAuthStateChanged(auth, cb);
 }
 
-// Salva/atualiza email/nome e garante role=user se vazio
-export async function ensureRoleDoc(uid, email = null, name = null) {
+export async function ensureRoleDoc(uid, displayName, email){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const ref = fs.doc(db, 'roles', uid);
-  const snap = await fs.getDoc(ref);
-  const base = { email: email || auth.currentUser?.email || null, name: name || auth.currentUser?.displayName || null };
-  if (!snap.exists()) {
-    await fs.setDoc(ref, { role: 'user', ...base }, { merge: true });
+  const ref = fs.doc(db,'roles',uid);
+  const s = await fs.getDoc(ref);
+  if (!s.exists()) {
+    await fs.setDoc(ref, { role:'user', name: displayName || '', email: email || '' }, { merge:true });
   } else {
-    await fs.setDoc(ref, base, { merge: true });
+    // só atualiza nome/email; regra garante que role não muda pelo user
+    await fs.updateDoc(ref, { name: displayName || '', email: email || '' });
   }
 }
-export async function isAdmin(uid) {
+
+export async function isAdmin(uid){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const ref = fs.doc(db, 'roles', uid);
-  const s = await fs.getDoc(ref);
+  const s = await fs.getDoc(fs.doc(db,'roles',uid));
   return s.exists() && s.data()?.role === 'admin';
 }
 
-function yyyymm(d) {
+function yyyymm(d){
   const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const m = String(d.getUTCMonth()+1).padStart(2,'0');
   return `${y}${m}`;
 }
+function dayISOfromDate(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const dd=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
 
-/* ===== batida ===== */
-// Escreve a batida usando addDoc (id automático). 'atDate' define o sub-mês (period)
-export async function addPunch(note = '', tipo = 'entrada', _geoIgnored, atDate, _siteId, _dist, _place) {
+/* ===== Tipo seguinte (Entrada|Saída) garantido ===== */
+export async function getNextTypeFor(uid, dayISO){
+  await initApp();
+  const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+
+  const d = new Date(dayISO);
+  const period = yyyymm(d);
+
+  // busca último do dia em ordem decrescente por 'at'
+  const q = fs.query(
+    fs.collection(db, 'punches', uid, period),
+    fs.where('day','==', dayISO),
+    fs.orderBy('at','desc'),
+    fs.limit(1)
+  );
+  const snap = await fs.getDocs(q);
+  if (snap.empty) return 'entrada';
+  const last = snap.docs[0].data();
+  return last.type === 'entrada' ? 'saida' : 'entrada';
+}
+
+/* ===== Criar ponto: força alternância ===== */
+export async function addPunchAuto({ at, note='' }){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const user = auth.currentUser;
   if (!user) throw new Error('Não autenticado');
 
-  const when = atDate instanceof Date ? atDate : new Date();
-  const period = yyyymm(when);
-  const col = fs.collection(db, 'punches', user.uid, period);
+  const atDate = at instanceof Date ? new Date(at) : new Date();
+  const dayISO = dayISOfromDate(atDate);
+  const period = yyyymm(atDate);
+  const nextType = await getNextTypeFor(user.uid, dayISO); // garante alternância
 
-  await fs.addDoc(col, {
-    ts: fs.serverTimestamp(),                  // carimbo do servidor
-    at: fs.Timestamp.fromDate(when),          // horário escolhido
+  const ref = fs.doc(fs.collection(db, 'punches', user.uid, period));
+  await fs.setDoc(ref, {
+    ts: fs.Timestamp.now(),                  // servidor
+    at: fs.Timestamp.fromDate(atDate),       // carimbo escolhido (cliente)
+    day: dayISO,                             // facilita consultas do dia
     email: user.email || '',
     uid: user.uid,
-    type: tipo,                               // 'entrada' | 'saida'
+    type: nextType,                          // ENFORCEMENT: sempre alternado
     note: note || ''
   });
 }
 
-/* ===== consultas ===== */
-function millisOf(p) {
-  if (p?.at?.toMillis) return p.at.toMillis();
-  if (p?.ts?.toMillis) return p.ts.toMillis();
-  if (p?.ts) return new Date(p.ts).getTime();
-  return 0;
-}
-
-// Últimos N do usuário (com _path)
-export async function listRecentPunchesRaw(limitN = 1) {
+/* ===== Consultas ===== */
+export async function listPunchesByDayForUser(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const user = auth.currentUser; if (!user) return [];
-  const period = yyyymm(new Date());
-  const q = fs.query(fs.collection(db, 'punches', user.uid, period), fs.orderBy('ts', 'desc'), fs.limit(limitN));
-  const snap = await fs.getDocs(q);
-  return snap.docs.map(d => ({ _id: d.id, _path: d.ref.path, ...d.data() }));
-}
-
-// Dia por usuário (com _path) — busca mês do dia e mês anterior
-export async function listPunchesByDayForUser(uid, dayISO, withRefs = false) {
-  await initApp();
-  const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-
   const d = new Date(dayISO);
-  const months = [yyyymm(d), yyyymm(new Date(d.getFullYear(), d.getMonth() - 1, 1))];
-  const rows = [];
-  for (const mm of months) {
-    const q = fs.query(fs.collection(db, 'punches', uid, mm), fs.orderBy('ts', 'asc'), fs.limit(600));
-    const s = await fs.getDocs(q);
-    s.docs.forEach(doc => {
-      const data = doc.data();
-      const base = data.at?.toDate?.() || data.ts?.toDate?.() || new Date(data.ts);
-      if (base.toISOString().slice(0, 10) === dayISO) {
-        rows.push(withRefs ? ({ ...data, _id: doc.id, _path: doc.ref.path }) : ({ ...data, _id: doc.id }));
-      }
-    });
-  }
-  rows.sort((a, b) => millisOf(a) - millisOf(b));
-  return rows;
+  const period = yyyymm(d);
+
+  const q = fs.query(
+    fs.collection(db,'punches',uid,period),
+    fs.where('day','==', dayISO),
+    fs.orderBy('at','asc')
+  );
+  const s = await fs.getDocs(q);
+  return s.docs.map(doc => ({ _id:doc.id, _path:doc.ref.path, ...doc.data() }));
 }
 
-export function computeDailyMs(punchesAsc) {
-  const arr = punchesAsc.slice().sort((a,b) => millisOf(a) - millisOf(b));
-  let total = 0, start = null;
-  for (const p of arr) {
-    const t = millisOf(p);
-    if (p.type === 'entrada') start = t;
-    if (p.type === 'saida' && start != null) { total += (t - start); start = null; }
+export function computeDailyMs(punchesAsc){
+  const arr = punchesAsc.slice().sort((a,b)=>{
+    const ta = a.at?.toMillis ? a.at.toMillis() : new Date(a.at || a.ts).getTime();
+    const tb = b.at?.toMillis ? b.at.toMillis() : new Date(b.at || b.ts).getTime();
+    return ta - tb;
+  });
+  let total=0, start=null;
+  for (const p of arr){
+    const t = p.at?.toMillis ? p.at.toMillis() : new Date(p.at || p.ts).getTime();
+    if (p.type==='entrada') start=t;
+    else if (p.type==='saida' && start!=null){ total += (t-start); start=null; }
   }
   return total;
 }
-export function msToHHMM(ms) {
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+export function msToHHMM(ms){
+  const h = Math.floor(ms/3600000);
+  const m = Math.floor((ms%3600000)/60000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
 
-/* ===== para o Admin ===== */
-export async function listPunchesByDayAllUsers(dayISO) {
+export async function listPunchesByDayAllUsers(dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const rolesSnap = await fs.getDocs(fs.collection(db, 'roles'));
-  const roles = {};
-  rolesSnap.forEach(d => roles[d.id] = d.data());
 
-  const base = new Date(dayISO);
-  const months = [yyyymm(base), yyyymm(new Date(base.getFullYear(), base.getMonth() - 1, 1))];
-  const rows = [];
+  // pega todos usuários de roles
+  const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
+  const list = [];
+  const period = yyyymm(new Date(dayISO));
 
-  for (const uid of Object.keys(roles)) {
-    for (const mm of months) {
-      const q = fs.query(fs.collection(db, 'punches', uid, mm), fs.orderBy('ts', 'asc'), fs.limit(600));
-      const s = await fs.getDocs(q);
-      s.docs.forEach(doc => {
-        const data = doc.data();
-        const when = data.at?.toDate?.() || data.ts?.toDate?.() || new Date(data.ts);
-        if (when.toISOString().slice(0, 10) === dayISO) {
-          rows.push({ ...data, uid, email: data.email || roles[uid]?.email || '', name: roles[uid]?.name || '' });
-        }
-      });
-    }
-  }
-  rows.sort((a,b) => millisOf(a) - millisOf(b));
-  return rows;
-}
-
-export async function listPunchesByMonthAllUsers(yyyymmStr) {
-  await initApp();
-  const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const rolesSnap = await fs.getDocs(fs.collection(db, 'roles'));
-  const rows = [];
-  for (const r of rolesSnap.docs) {
-    const uid = r.id, role = r.data();
-    const q = fs.query(fs.collection(db, 'punches', uid, yyyymmStr), fs.orderBy('ts', 'asc'));
+  for (const r of rolesSnap.docs){
+    const uid = r.id;
+    const profile = r.data() || {};
+    const q = fs.query(
+      fs.collection(db,'punches',uid,period),
+      fs.where('day','==',dayISO),
+      fs.orderBy('at','asc')
+    );
     const s = await fs.getDocs(q);
-    s.docs.forEach(d => rows.push({ ...d.data(), uid, name: role?.name || '', email: role?.email || '' }));
+    s.forEach(d=>{
+      const data = d.data();
+      list.push({
+        ...data,
+        uid,
+        email: data.email || profile.email || '',
+        name: profile.name || ''
+      });
+    });
   }
-  return rows;
+  // já vem asc; se precisar:
+  list.sort((a,b)=>{
+    const ta = a.at?.toMillis ? a.at.toMillis() : new Date(a.at||a.ts).getTime();
+    const tb = b.at?.toMillis ? b.at.toMillis() : new Date(b.at||b.ts).getTime();
+    return ta - tb;
+  });
+  return list;
 }
 
 /* ===== Ajustes ===== */
-export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }) {
+export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const user = auth.currentUser; if (!user) throw new Error('Não autenticado');
 
   let tsWanted = null;
-  if (!action || action === 'include') {
-    const [hh, mm] = (timeHHMM || '00:00').split(':').map(n => parseInt(n, 10) || 0);
-    const dt = new Date(dateISO); dt.setHours(hh, mm, 0, 0);
-    tsWanted = fs.Timestamp.fromDate(dt);
+  if (!action || action==='include'){
+    const [hh,mm] = (timeHHMM||'00:00').split(':').map(x=>parseInt(x||'0',10));
+    const d = new Date(dateISO); d.setHours(hh,mm,0,0);
+    tsWanted = fs.Timestamp.fromDate(d);
   }
 
-  return fs.addDoc(fs.collection(db, 'adjust_requests'), {
-    uid: user.uid,
-    email: user.email || '',
+  await fs.addDoc(fs.collection(db,'adjust_requests'), {
+    uid: user.uid, email: user.email||'',
     type: type || null,
     reason: reason || '',
-    action: action || 'include', // include | delete
+    action: action || 'include',
     targetPath: targetPath || null,
     tsWanted: tsWanted,
     status: 'pending',
     createdAt: fs.Timestamp.now()
   });
 }
-export async function listPendingAdjustments() {
+
+export async function listPendingAdjustments(){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const q = fs.query(
-    fs.collection(db, 'adjust_requests'),
-    fs.where('status', '==', 'pending'),
-    fs.orderBy('createdAt', 'asc')
-  );
+  const q = fs.query(fs.collection(db,'adjust_requests'),
+                     fs.where('status','==','pending'),
+                     fs.orderBy('createdAt','asc'));
   const s = await fs.getDocs(q);
-  return s.docs.map(d => ({ id: d.id, ...d.data() }));
+  return s.docs.map(d=>({ id:d.id, ...d.data() }));
 }
-export async function approveAdjustment(req, adminUid) {
+
+export async function approveAdjustment(req, adminUid){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
 
-  if (req.action === 'delete' && req.targetPath) {
+  if (req.action==='delete' && req.targetPath){
     await fs.deleteDoc(fs.doc(db, req.targetPath));
   } else {
-    const dt = req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
-    const period = yyyymm(dt);
-    const pref = fs.collection(db, 'punches', req.uid, period);
-    await fs.addDoc(pref, {
+    const d = req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
+    const period = yyyymm(d);
+    await fs.setDoc(fs.doc(fs.collection(db,'punches', req.uid, period)), {
       ts: fs.Timestamp.now(),
       at: req.tsWanted,
+      day: dayISOfromDate(d),
       email: req.email || '',
       uid: req.uid,
       type: req.type || 'entrada',
       note: 'Ajuste aprovado (admin)'
     });
   }
-  await fs.updateDoc(fs.doc(db, 'adjust_requests', req.id), {
-    status: 'approved', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid
+
+  await fs.updateDoc(fs.doc(db,'adjust_requests',req.id), {
+    status:'approved', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid
   });
 }
-export async function rejectAdjustment(reqId, adminUid, reason) {
+
+export async function rejectAdjustment(reqId, adminUid, reason){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  await fs.updateDoc(fs.doc(db, 'adjust_requests', reqId), {
-    status: 'rejected', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid, adminNote: reason || ''
+  await fs.updateDoc(fs.doc(db,'adjust_requests',reqId),{
+    status:'rejected', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid, adminNote: reason||''
   });
 }
