@@ -148,11 +148,16 @@
           if (item.type.toLowerCase() === 'entrada') entradas++;
           if (item.type.toLowerCase() === 'saida')   saidas++;
         }
-      } catch (_) {}
+        } catch(e){
+          console.error('addPunch falhou:', e);
+          // Mostra o erro real (ex.: invalid-argument / Bad Request)
+          $('status').textContent = 'Falha ao salvar: ' + (e?.code ? `${e.code} — ` : '') + (e?.message || e);
+          // Enfileira para não perder o registro
+          enqueuePunch({ note, type: nextType, atISO: at.toISOString() });
+          refreshQueueBadge();
+          await refreshAll();
+        }
 
-      nextType = entradas > saidas ? 'saida' : 'entrada';
-      setBtnLabel();
-    }
     $('pDate').addEventListener('change', computeNextType);
 
     // ===== auth: login / registro / sair
@@ -325,3 +330,4 @@
   </script>
 </body>
 </html>
+
