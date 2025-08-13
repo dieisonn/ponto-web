@@ -5,301 +5,196 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Marcação de Ponto</title>
   <style>
-    :root { --gap: 12px; }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, Arial; max-width: 760px; margin: 24px auto; padding: 0 12px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
-    .row { display: flex; gap: var(--gap); align-items: center; flex-wrap: wrap; }
-    .row > * { margin: 4px 0; }
-    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; border:1px solid #bbb; background:#fff; }
-    input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; }
-    input[type="date"], input[type="time"]{ min-width: 140px; }
-    .muted { color:#777; }
+    :root { --card:#f8f8f8; --bd:#e5e5e5; --txt:#222; --mut:#666; --pri:#4b5; }
+    body { font-family: system-ui, Roboto, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; color:var(--txt); }
+    h1 { margin: 0 0 16px; }
+    .card { background: #fff; border:1px solid var(--bd); border-radius: 14px; padding: 16px; margin: 12px 0; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    label { font-weight: 600; margin-right: 8px; }
+    input, select, button, textarea { font-size: 15px; }
+    input[type=date], input[type=time], input[type=text], textarea, select {
+      border:1px solid var(--bd); border-radius:10px; padding:8px 10px;
+    }
+    textarea { width:100%; min-height:44px; resize: vertical; }
+    button { padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer; }
+    button.primary { background:#222; color:#fff; border-color:#222; }
+    .muted { color:var(--mut); }
     .hidden { display:none; }
-    ul { padding-left: 22px; }
-    .btn-sm { padding: 6px 10px; border-radius: 8px; }
-    .list-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; background:#f2f2f2; border:1px solid #e0e0e0; font-size:12px; }
+    ul.clean { margin:0; padding-left:20px; }
+    .pill { display:inline-block; background:#eee; border-radius:999px; padding:4px 8px; font-size:13px; margin-left:8px; }
+    .right { margin-left:auto; }
+    .btns-row { display:flex; gap:10px; flex-wrap:wrap; }
+    .kpi { display:flex; gap:20px; align-items:center; flex-wrap:wrap; font-size:14px; }
+    .kpi span { background:#f3f3f3; border:1px solid var(--bd); padding:6px 10px; border-radius:999px; }
   </style>
 </head>
 <body>
   <h1>Marcação de Ponto</h1>
 
-  <!-- ===== deslogado ===== -->
-  <div id="loggedOut" class="card">
-    <h3>Entrar</h3>
-    <label>Email</label>
-    <input id="email" type="email" autocomplete="username" />
-    <label>Senha</label>
-    <input id="password" type="password" autocomplete="current-password" />
-    <div class="row">
-      <button id="btnLogin">Login</button>
-      <button id="btnRegister">Criar conta</button>
-    </div>
-    <p id="msg" style="color:#b00020;"></p>
-  </div>
+  <div id="hello" class="muted"></div>
 
-  <!-- ===== logado ===== -->
-  <div id="loggedIn" class="card hidden">
-    <p>Olá, <b id="who"></b></p>
-
-    <!-- Banner para admins -->
-    <div id="adminBanner" class="card hidden">
-      <p><b>Você é administrador.</b> Batida desabilitada para admins.</p>
-      <p><a href="admin.html">Ir para o Painel do Admin</a></p>
+  <!-- Bater ponto (esconde para admin) -->
+  <div id="punchCard" class="card hidden">
+    <div class="row" style="justify-content:space-between;">
+      <h3 style="margin:0">Bater ponto</h3>
+      <span class="pill" id="pillType">Entrada</span>
     </div>
 
-    <!-- Área de batida (oculta para admin) -->
-    <div id="punchCard" class="card">
-      <h3>Bater ponto <span id="hintType" class="pill">Entrada</span></h3>
-      <div class="row">
-        <label>Data:<br><input type="date" id="pDate"></label>
-        <label>Hora:<br><input type="time" id="pTime" step="60"></label>
-        <span style="flex:1 1 auto"></span>
-        <button id="btnLogout">Sair</button>
-      </div>
+    <div class="row" style="margin-top:8px">
+      <label>Data:</label>
+      <input type="date" id="pDate" />
+      <label>Hora:</label>
+      <input type="time" id="pTime" step="60" />
+    </div>
 
+    <div style="margin-top:8px">
       <label>Motivo/Observação</label>
       <input id="note" type="text" placeholder="Opcional" />
-
-      <div class="row">
-        <button id="btnPunch">Registrar <span id="btnPunchLabel">Entrada</span></button>
-      </div>
-      <p id="status" class="muted"></p>
-      <small class="muted">Sem internet? O ponto grava quando a conexão voltar.</small>
     </div>
 
-    <div class="card">
-      <p id="dailyTotal">Total de horas hoje: 00:00</p>
+    <div class="btns-row" style="margin-top:12px">
+      <button id="btnPunch" class="primary">Registrar Entrada</button>
+      <button id="btnLogout" class="right">Sair</button>
     </div>
 
-    <div class="card">
-      <h3>Registros de hoje</h3>
-      <ul id="listToday"><li class="muted">Nenhum registro hoje.</li></ul>
-    </div>
+    <p id="status" class="muted" style="margin-top:10px"></p>
+  </div>
 
-    <div class="card">
-      <h3>Último registro</h3>
-      <ul id="punchList"></ul>
-      <small id="lastMeta" class="muted"></small>
+  <!-- KPIs do dia -->
+  <div class="card">
+    <div class="kpi">
+      <span>Hoje: <b id="kToday">00:00</b></span>
+      <span>req: <b id="kReq">--</b></span>
+      <span>trab: <b id="kWork">--</b></span>
+      <span>fator: <b id="kFactor">1.0x</b></span>
+      <span class="right"><a href="admin.html" id="adminLink" class="hidden">Painel Admin</a></span>
     </div>
+  </div>
 
-    <div class="card">
-      <h3>Solicitar ajuste</h3>
-      <div class="row">
-        <label>Data: <br><input type="date" id="adjDate"></label>
-        <label>Hora: <br><input type="time" id="adjTime" step="60"></label>
-        <label>Tipo: <br>
-          <select id="adjType">
-            <option value="entrada">Entrada</option>
-            <option value="saida">Saída</option>
-          </select>
-        </label>
-      </div>
-      <label>Motivo</label>
-      <input id="adjReason" type="text" placeholder="Explique o ajuste..." />
-      <div class="row"><button id="btnAdjSend">Enviar pedido</button></div>
-      <p id="adjMsg"></p>
-    </div>
-
-    <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
+  <!-- Registros do dia -->
+  <div class="card">
+    <h3 style="margin-top:0">Registros de hoje</h3>
+    <ul id="listToday" class="clean"></ul>
   </div>
 
   <script type="module">
     import {
       initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
-      addPunch, listRecentPunchesRaw, requestAdjustment,
-      listPunchesByDayForUser, computeDailyMs, msToHHMM, db
+      addPunchAuto, listPunchesByDayForUser, getNextTypeFor,
+      computeDailyMs, msToHHMM, requestAdjustment
     } from './app.js';
 
     await initApp();
-    const $ = (id) => document.getElementById(id);
-    const show = (el, v) => el && el.classList.toggle('hidden', !v);
 
-    // Prefill agora
-    function setNow() {
-      const now = new Date();
-      $('pDate').value = now.toISOString().slice(0,10);
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      $('pTime').value = hh + ':' + mm;
-    }
-    setNow();
+    const $ = id => document.getElementById(id);
+    const show = (el,v) => el.classList.toggle('hidden', !v);
 
-    // Login/registro/sair
-    $('btnLogin').onclick = async () => {
-      $('msg').textContent = '';
-      try {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signInWithEmailAndPassword(auth, $('email').value, $('password').value);
-      } catch (e) { $('msg').textContent = e.message || String(e); }
-    };
-    $('btnRegister').onclick = async () => {
-      $('msg').textContent = '';
-      try {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        const cred = await m.createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
-        await ensureRoleDoc(cred.user.uid);
-      } catch (e) { $('msg').textContent = e.message || String(e); }
-    };
-    $('btnLogout').onclick = async (ev) => {
-      ev.preventDefault();
-      try{
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signOut(auth);
-        location.reload();
-      }catch(e){ $('status').textContent = 'Erro ao sair: ' + (e.message||e); }
-    };
-
-    // Deteção do próximo tipo
-    function detectNextType(todayAsc) {
-      if (!todayAsc.length) return 'entrada';
-      return todayAsc[todayAsc.length-1].type === 'entrada' ? 'saida' : 'entrada';
-    }
-    function setTypeUI(t) {
-      const label = t === 'entrada' ? 'Entrada' : 'Saída';
-      $('hintType').textContent = label;
-      $('btnPunchLabel').textContent = label;
+    function nowToInputs(){
+      const n = new Date();
+      $('pDate').value = n.toISOString().slice(0,10);
+      $('pTime').value = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
     }
 
-    // Batida
-    $('btnPunch').onclick = async () => {
-      const dateISO = $('pDate').value;
-      const time = $('pTime').value;
-      const note = $('note').value || '';
-      if (!dateISO || !time) { $('status').textContent = 'Informe data e hora.'; return; }
+    async function refreshType(){
+      const user = auth.currentUser; if(!user) return;
+      const dayISO = $('pDate').value || new Date().toISOString().slice(0,10);
+      const next = await getNextTypeFor(user.uid, dayISO);
+      $('pillType').textContent = (next==='entrada' ? 'Entrada' : 'Saída');
+      $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada':'Saída');
+    }
 
-      const [hh, mm] = time.split(':').map(n => parseInt(n,10)||0);
-      const at = new Date(dateISO); at.setHours(hh,mm,0,0);
-
+    async function refreshToday(){
       const user = auth.currentUser; if (!user) return;
-      const todayISO = new Date().toISOString().slice(0,10);
-      const rowsAsc = await listPunchesByDayForUser(user.uid, todayISO);
-      const tipo = detectNextType(rowsAsc);
+      const day = new Date().toISOString().slice(0,10);
+      const arr = await listPunchesByDayForUser(user.uid, day); // ordem asc
 
-      $('status').textContent = 'Registrando...';
-      try {
-        await addPunch(note, tipo, null, at, null, 0, '');
-        $('status').textContent = 'Ponto registrado!';
-        $('note').value = '';
-        await refreshTodayList();
-        await refreshLast();
-        await updateDailyTotal();
-        setTypeUI(tipo === 'entrada' ? 'saida' : 'entrada');
-      } catch (e) {
-        $('status').textContent = 'Erro: ' + (e.message || e);
-      }
-    };
-
-    // Último registro
-    let lastDoc = null;
-    async function refreshLast() {
-      const list = await listRecentPunchesRaw(1);
-      const ul = $('punchList'); ul.innerHTML = '';
-      const li = document.createElement('li');
-      if (!list.length) {
-        lastDoc = null; li.textContent = 'Sem registros ainda.'; ul.appendChild(li); $('lastMeta').textContent=''; return;
-      }
-      const d = list[0]; lastDoc = d;
-      const when = d.at?.toDate?.() || d.ts?.toDate?.() || new Date();
-      li.textContent = when.toLocaleString('pt-BR') + (d.type ? ` (${d.type})` : '') + (d.note ? ` — ${d.note}` : '');
-      ul.appendChild(li);
-      $('lastMeta').textContent = '';
-    }
-
-    // Lista de hoje com botões por item
-    async function refreshTodayList() {
-      const user = auth.currentUser; if (!user) return;
-      const todayISO = new Date().toISOString().slice(0,10);
-      // withRefs = true para termos _path e acionar ajuste/exclusão do item certo
-      const rows = await listPunchesByDayForUser(user.uid, todayISO, true);
+      // lista
       const ul = $('listToday'); ul.innerHTML = '';
-      if (!rows.length) {
-        ul.innerHTML = '<li class="muted">Nenhum registro hoje.</li>';
-        setTypeUI('entrada');
-        return;
-      }
-      rows.forEach(p => {
-        const d = p.at?.toDate?.() || p.ts?.toDate?.() || new Date(p.ts);
+      if (!arr.length){
         const li = document.createElement('li');
-        li.innerHTML = `
-          ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${p.type?` (${p.type})`:''}${p.note?` — ${p.note}`:''}
-          <div class="list-actions">
-            <button class="btn-sm btn-ajustar" data-type="${p.type||'entrada'}" data-date="${d.toISOString().slice(0,10)}"
-                    data-time="${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}">Ajustar</button>
-            <button class="btn-sm btn-excluir" data-path="${p._path}" data-type="${p.type||'entrada'}">Excluir</button>
-          </div>
-        `;
+        li.className = 'muted'; li.textContent = 'Nenhum registro hoje.';
         ul.appendChild(li);
-      });
-      setTypeUI(detectNextType(rows));
-    }
-
-    // Delegação de eventos nos botões por item
-    $('listToday').addEventListener('click', async (ev) => {
-      const t = ev.target;
-      if (t.classList.contains('btn-ajustar')) {
-        $('adjDate').value = t.dataset.date;
-        $('adjTime').value = t.dataset.time;
-        $('adjType').value = t.dataset.type || 'entrada';
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }
-      if (t.classList.contains('btn-excluir')) {
-        const path = t.dataset.path;
-        const type = t.dataset.type || 'entrada';
-        const reason = prompt('Explique por que deseja excluir este ponto:') || '';
-        if (!path) return alert('Não foi possível identificar o ponto.');
-        try {
-          await requestAdjustment({ action:'delete', targetPath:path, type, reason });
-          alert('Pedido de exclusão enviado.');
-        } catch(e){ alert('Erro: ' + (e.message||e)); }
-      }
-    });
-
-    // Ajuste manual (inclusão)
-    $('btnAdjSend').onclick = async function(){
-      try{
-        await requestAdjustment({
-          dateISO: $('adjDate').value,
-          timeHHMM: $('adjTime').value,
-          type: $('adjType').value,
-          reason: $('adjReason').value || ''
-        });
-        $('adjMsg').textContent = 'Pedido enviado. Aguarde aprovação.';
-        $('adjReason').value = '';
-      }catch(e){ $('adjMsg').textContent = 'Erro: ' + (e.message||e); }
-    };
-
-    // Total do dia
-    async function updateDailyTotal() {
-      if (!auth.currentUser) return;
-      const today = new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
-      $('dailyTotal').textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
-    }
-
-    // ciclo de login
-    onUserChanged(async (user) => {
-      show($('loggedOut'), !user);
-      show($('loggedIn'),  !!user);
-      $('who').textContent = user ? (user.displayName || user.email || '') : '';
-      $('msg').textContent = ''; $('status').textContent = '';
-      if (user) {
-        await ensureRoleDoc(user.uid, user.email || null, user.displayName || null);
-        const admin = await isAdmin(user.uid);
-        show($('adminLink'), admin);
-        show($('punchCard'), !admin);
-        show($('adminBanner'), admin);
-        if (!admin) {
-          await refreshTodayList();
-          await refreshLast();
-          await updateDailyTotal();
-        } else {
-          $('listToday').innerHTML = '<li class="muted">Não aplicável para administradores.</li>';
-          $('punchList').innerHTML = '';
-          $('dailyTotal').textContent = '';
+      } else {
+        for (const p of arr){
+          const when = p.at?.toDate ? p.at.toDate() : new Date(p.at||p.ts);
+          const li = document.createElement('li');
+          li.style.marginBottom = '8px';
+          li.textContent = `${when.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${p.type})` + (p.note ? ` — ${p.note}`:'');
+          // botões de ajuste / exclusão
+          const btns = document.createElement('div');
+          btns.className='btns-row';
+          const b1 = document.createElement('button'); b1.textContent='Pedir exclusão'; 
+          b1.onclick= async ()=>{
+            const reason = prompt('Explique o motivo da exclusão:')||'';
+            await requestAdjustment({ action:'delete', targetPath:p._path, type:p.type, reason });
+            alert('Pedido enviado.');
+          };
+          btns.appendChild(b1);
+          const b2 = document.createElement('button'); b2.textContent='Pedir ajuste horário';
+          b2.onclick = async ()=>{
+            const d = when.toISOString().slice(0,10);
+            const hh = String(when.getHours()).padStart(2,'0');
+            const mm = String(when.getMinutes()).padStart(2,'0');
+            const nh = prompt('Novo horário HH:MM', `${hh}:${mm}`); if(!nh) return;
+            const rs = prompt('Motivo do ajuste:')||'';
+            await requestAdjustment({ dateISO:d, timeHHMM:nh, type:p.type, reason:rs, action:'include' });
+            alert('Pedido de ajuste enviado.');
+          };
+          btns.style.marginTop='4px';
+          li.appendChild(document.createElement('br'));
+          li.appendChild(btns);
+          ul.appendChild(li);
         }
       }
+
+      // total do dia
+      $('kToday').textContent = msToHHMM(computeDailyMs(arr));
+      // indicadores simples (placeholder – mantém como antes)
+      $('kReq').textContent = '09:00';
+      $('kWork').textContent = '08:00';
+      $('kFactor').textContent = '1.5x';
+    }
+
+    // Ações
+    $('btnPunch').onclick = async ()=>{
+      $('status').textContent = 'Registrando...';
+      try{
+        // monta Date com campos escolhidos
+        const d = new Date($('pDate').value || new Date());
+        const [hh,mm] = ($('pTime').value||'00:00').split(':').map(x=>parseInt(x||'0',10));
+        d.setHours(hh,mm,0,0);
+        await addPunchAuto({ at:d, note:$('note').value||'' });
+        $('status').textContent='Ponto registrado!';
+        $('note').value='';
+        await refreshType();
+        await refreshToday();
+      }catch(e){
+        $('status').textContent='Erro: ' + (e?.message||e);
+      }
+    };
+
+    $('btnLogout').onclick = async ()=>{
+      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await m.signOut(auth); location.reload();
+    };
+
+    // login state
+    onUserChanged(async (user)=>{
+      if (!user){
+        location.href = './'; // ou exibir formulário, se preferir
+        return;
+      }
+      $('hello').textContent = `Olá, ${user.displayName||user.email||''}`;
+      await ensureRoleDoc(user.uid, user.displayName||'', user.email||'');
+
+      nowToInputs();
+      await refreshType();
+      await refreshToday();
+
+      const admin = await isAdmin(user.uid);
+      show($('adminLink'), admin);
+      // Admin não vê área de batida
+      show($('punchCard'), !admin);
     });
   </script>
 </body>
