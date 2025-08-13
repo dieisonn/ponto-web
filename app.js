@@ -47,7 +47,6 @@ export async function ensureRoleDoc(uid){
   const ref = fs.doc(db,'roles',uid);
   const snap = await fs.getDoc(ref);
 
-  // Tenta pegar nome do próprio usuário (displayName) e email
   const user = auth.currentUser || {};
   const base = {
     email: user.email || null,
@@ -57,7 +56,6 @@ export async function ensureRoleDoc(uid){
   if (!snap.exists()) {
     await fs.setDoc(ref, { role: 'user', ...base }, { merge: true });
   } else {
-    // Se faltar email/name, grava (merge) sem sobrescrever role já existente
     const d = snap.data() || {};
     if (!d.email || !d.name) {
       await fs.setDoc(ref, { ...base }, { merge: true });
@@ -81,14 +79,9 @@ function yyyymm(d){
 
 /* =========================
  *  Fila offline (sem geo)
- *  (Patch 2-A / 2-B)
  * ========================= */
 const QKEY = 'ponto_queue';
 
-// Apenas os campos aceitos na fila
-const ALLOWED_QUEUE_FIELDS = ['note', 'type', 'atISO'];
-
-// Remove campos antigos (geo/site) e undefined
 function sanitizeQueueItem(it) {
   if (!it) return { note: '', type: 'entrada', atISO: new Date().toISOString() };
   const cleaned = {
@@ -107,6 +100,10 @@ export function getQueue(){
   } catch {
     return [];
   }
+}
+
+export function clearQueue(){
+  localStorage.removeItem(QKEY);
 }
 
 export function enqueuePunch(item){
@@ -144,12 +141,12 @@ export async function addPunch(note = '', tipo = 'entrada', atDate = null){
   const user = auth.currentUser; 
   if (!user) throw new Error('Não autenticado');
 
-  const period = yyyymm(new Date());
+  const period = yyyymm(atDate || new Date());
   const col = fs.collection(db,'punches', user.uid, period);
-  const ref = fs.doc(col); // cria ID aleatório
+  const ref = fs.doc(col); // ID aleatório
 
   const payload = {
-    ts: fs.Timestamp.now(),
+    ts: fs.Timestamp.now(),                    // auditoria
     at: atDate ? fs.Timestamp.fromDate(atDate) : null,
     email: user.email || '',
     uid: user.uid,
@@ -157,7 +154,6 @@ export async function addPunch(note = '', tipo = 'entrada', atDate = null){
     note: note || ''
   };
 
-  // Nenhum campo undefined
   Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
 
   await fs.setDoc(ref, payload);
@@ -185,7 +181,7 @@ export async function listRecentPunches(limitN=10){
   return arr.map(x => { const { _id, _path, ...r } = x; return r; });
 }
 
-// Lista batidas de um usuário em um dia (prefere 'at' se existir)
+// Batidas do dia (prefere 'at')
 export async function listPunchesByDayForUser(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -230,7 +226,7 @@ export function msToHHMM(ms){
   return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
 }
 
-// Todas as batidas do dia (todos usuários), com nome/email
+// Todas as batidas do dia (todos os usuários)
 export async function listPunchesByDayAllUsers(dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -274,7 +270,7 @@ export async function listPunchesByDayAllUsers(dayISO){
   return rows;
 }
 
-// Todas as batidas do mês (todos usuários), com nome/email
+// Todas as batidas do mês
 export async function listPunchesByMonthAllUsers(yyyymmStr){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -346,7 +342,6 @@ export async function approveAdjustment(req, adminUid){
   if (req.action === 'delete' && req.targetPath){
     await fs.deleteDoc(fs.doc(db, req.targetPath));
   } else {
-    // inclui ponto em tsWanted (ajuste admi)
     const dt = req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
     const period = yyyymm(dt);
     const pref = fs.doc(fs.collection(db,'punches', req.uid, period));
