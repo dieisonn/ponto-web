@@ -29,13 +29,12 @@ export async function initApp() {
   return initializingPromise;
 }
 
-/* ======= Helpers Firebase ======= */
+/* ===== Helpers ===== */
 export async function onUserChanged(cb) {
   await initApp();
   const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
   onAuthStateChanged(auth, cb);
 }
-
 export async function ensureRoleDoc(uid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -43,7 +42,6 @@ export async function ensureRoleDoc(uid) {
   const snap = await fs.getDoc(ref);
   if (!snap.exists()) await fs.setDoc(ref, { role: 'user' }, { merge: true });
 }
-
 export async function isAdmin(uid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -51,23 +49,20 @@ export async function isAdmin(uid) {
   const s = await fs.getDoc(ref);
   return s.exists() && s.data()?.role === 'admin';
 }
-
 export async function getUserProfile(uid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const d = await fs.getDoc(fs.doc(db, 'roles', uid));
   return d.exists() ? d.data() : {};
 }
-
 function yyyymm(d) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
   return `${y}${m}`;
 }
-
 function ymd(d) { return d.toISOString().slice(0,10); }
 
-/* ======= Punches ======= */
+/* ===== Punches ===== */
 export async function addPunch(note = '', atDate = null, forcedType = null) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -79,8 +74,8 @@ export async function addPunch(note = '', atDate = null, forcedType = null) {
     const last = await listRecentPunchesRaw(1);
     const today = new Date().toISOString().slice(0,10);
     const lastIsTodayEntrada = (last[0] && (last[0].at?.toDate?.() || last[0].ts?.toDate?.() || new Date(last[0].ts)))
-        && ymd((last[0].at?.toDate?.() || last[0].ts?.toDate?.() || new Date(last[0].ts))) === today
-        && last[0].type === 'entrada';
+      && ymd((last[0].at?.toDate?.() || last[0].ts?.toDate?.() || new Date(last[0].ts))) === today
+      && last[0].type === 'entrada';
     type = lastIsTodayEntrada ? 'saida' : 'entrada';
   }
 
@@ -144,9 +139,8 @@ export function computeDailyMs(punchesAsc) {
     if (p.type === 'entrada') inicio = t;
     if (p.type === 'saida' && inicio != null) { total += (t - inicio); inicio = null; }
   }
-  return total; // ms trabalhados
+  return total;
 }
-
 export function msToHHMM(ms) {
   const sign = ms < 0 ? '-' : '';
   ms = Math.abs(ms);
@@ -155,14 +149,14 @@ export function msToHHMM(ms) {
   return sign + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
 }
 
-/* ======= Jornada (schedules) ======= */
+/* ===== Jornada ===== */
 export async function getSchedule(uid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const s = await fs.getDoc(fs.doc(db, 'schedules', uid));
   if (s.exists()) return s.data();
 
-  // DEFAULT: Seg-Sex 08:00-17:00 c/ 60 min; Sáb inativo; Dom inativo.
+  // Default: Seg-Sex 08:00-17:00 com 60 min de pausa; Sáb/Dom inativos.
   const def = { weekly: {} };
   for (let d = 0; d < 7; d++) {
     def.weekly[d] = (d >= 1 && d <= 5)
@@ -171,19 +165,16 @@ export async function getSchedule(uid) {
   }
   return def;
 }
-
 export async function saveSchedule(uid, weekly) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   return fs.setDoc(fs.doc(db, 'schedules', uid), { weekly }, { merge: true });
 }
-
 function parseHHMM(s) {
   if (!s || !/^\d{2}:\d{2}$/.test(s)) return 0;
   const [hh, mm] = s.split(':').map(Number);
   return hh * 60 + mm;
 }
-
 export function requiredMsForDate(schedule, dateObj) {
   const w = schedule?.weekly || {};
   const d = dateObj.getDay(); // 0=Dom
@@ -196,7 +187,7 @@ export function requiredMsForDate(schedule, dateObj) {
   return min * 60000;
 }
 
-/* ======= Feriados ======= */
+/* ===== Feriados ===== */
 export async function isHoliday(dayISO) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -204,13 +195,12 @@ export async function isHoliday(dayISO) {
   return s.exists();
 }
 
-/* ======= Banco de horas ======= */
+/* ===== Banco de horas ===== */
 function overtimeRateForDate(dateObj, holidayFlag) {
-  if (holidayFlag || dateObj.getDay() === 0) return 2.0; // Dom/feriado
+  if (holidayFlag || dateObj.getDay() === 0) return 2.0; // Dom/Feriado
   if (dateObj.getDay() === 6) return 1.5;               // Sáb
-  return 1.5;                                           // Demais dias (extra após jornada)
+  return 1.5;                                           // Dias úteis (excedente)
 }
-
 export async function computeDailyBank(uid, dayISO) {
   const punches = await listPunchesByDayForUser(uid, dayISO);
   const workedMs = computeDailyMs(punches);
@@ -225,20 +215,14 @@ export async function computeDailyBank(uid, dayISO) {
 
   return { workedMs, reqMs, bankMs, rate, holiday, punches };
 }
-
-export async function computeMonthlyBank(uid, yyyymmStr /* 'YYYYMM' */) {
+export async function computeMonthlyBank(uid, yyyymmStr) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
 
-  // Carrega punches do mês para o usuário
-  const q = fs.query(
-    fs.collection(db, 'punches', uid, yyyymmStr),
-    fs.orderBy('ts','asc')
-  );
+  const q = fs.query(fs.collection(db, 'punches', uid, yyyymmStr), fs.orderBy('ts','asc'));
   const snap = await fs.getDocs(q);
   const all = snap.docs.map(d => ({ ...d.data(), _id:d.id }));
 
-  // Agrega por dia
   const byDay = {};
   for (const r of all) {
     const dt = r.at?.toDate?.() || r.ts?.toDate?.() || new Date(r.ts);
@@ -267,8 +251,8 @@ export async function computeMonthlyBank(uid, yyyymmStr /* 'YYYYMM' */) {
   return totalMs;
 }
 
-/* ======= Status (em trabalho / em intervalo) ======= */
-export function todayStatus(punchesAsc /* de hoje */) {
+/* ===== Status (em trabalho / em intervalo) ===== */
+export function todayStatus(punchesAsc) {
   if (!punchesAsc.length) return { status: 'Sem registros', since: null };
   const last = punchesAsc[punchesAsc.length-1];
   const when = last.at?.toDate?.() || last.ts?.toDate?.() || new Date(last.ts);
@@ -276,22 +260,18 @@ export function todayStatus(punchesAsc /* de hoje */) {
   return { status: 'Em intervalo', since: when };
 }
 
-/* ======= Admin: Dados do dia e do mês ======= */
+/* ===== Admin: consultas ===== */
 export async function listPunchesByDayAllUsers(dayISO) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const rolesSnap = await fs.getDocs(fs.collection(db, 'roles'));
-  const rolesMap = {}; rolesSnap.forEach(d => rolesMap[d.id]=d.data());
+  const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
+  const rolesMap = {}; rolesSnap.forEach(d => rolesMap[d.id] = d.data());
   const base = new Date(dayISO);
   const months=[ yyyymm(base), yyyymm(new Date(base.getFullYear(), base.getMonth()-1,1)) ];
   const rows = [];
   for (const uid of Object.keys(rolesMap)) {
     for (const m of months) {
-      const q = fs.query(
-        fs.collection(db, 'punches', uid, m),
-        fs.orderBy('ts','asc'),
-        fs.limit(500)
-      );
+      const q = fs.query(fs.collection(db,'punches',uid,m), fs.orderBy('ts','asc'), fs.limit(500));
       const s = await fs.getDocs(q);
       for (const doc of s.docs) {
         const data = doc.data();
@@ -307,22 +287,21 @@ export async function listPunchesByDayAllUsers(dayISO) {
   });
   return rows;
 }
-
 export async function listPunchesByMonthAllUsers(yyyymmStr) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const rolesSnap = await fs.getDocs(fs.collection(db, 'roles'));
+  const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
   const rows = [];
   for (const r of rolesSnap.docs) {
     const uid = r.id, role = r.data();
-    const q = fs.query(fs.collection(db, 'punches', uid, yyyymmStr), fs.orderBy('ts','asc'));
+    const q = fs.query(fs.collection(db,'punches',uid,yyyymmStr), fs.orderBy('ts','asc'));
     const s = await fs.getDocs(q);
     for (const d of s.docs) rows.push({ ...d.data(), uid, name: role?.name||'', email: role?.email||'' });
   }
   return rows;
 }
 
-/* ======= Ajustes (já existentes) ======= */
+/* ===== Ajustes ===== */
 export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -344,7 +323,6 @@ export async function requestAdjustment({ dateISO, timeHHMM, type, reason, actio
     status: 'pending', createdAt: fs.Timestamp.now()
   });
 }
-
 export async function listPendingAdjustments() {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -354,7 +332,6 @@ export async function listPendingAdjustments() {
   const s = await fs.getDocs(q);
   return s.docs.map(d => ({ id:d.id, ...d.data() }));
 }
-
 export async function approveAdjustment(req, adminUid) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -377,7 +354,6 @@ export async function approveAdjustment(req, adminUid) {
     status:'approved', resolvedAt: fs.Timestamp.now(), resolvedBy: adminUid
   });
 }
-
 export async function rejectAdjustment(reqId, adminUid, reason) {
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
