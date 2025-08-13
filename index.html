@@ -62,6 +62,7 @@
       <div class="row" style="margin-top:8px">
         <button id="btnPunchSave">Registrar Entrada</button>
         <button id="btnSync" class="right hidden">Sincronizar fila</button>
+        <button id="btnClearQ" class="right hidden" title="Descartar fila (apenas admin)">Limpar fila</button>
         <button id="btnLogout" class="right">Sair</button>
       </div>
 
@@ -115,7 +116,7 @@
       initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
       addPunch, listRecentPunchesRaw, requestAdjustment,
       listPunchesByDayForUser, computeDailyMs, msToHHMM,
-      getQueue, enqueuePunch, trySyncQueue
+      getQueue, enqueuePunch, trySyncQueue, clearQueue
     } from './app.js';
 
     await initApp();
@@ -126,7 +127,7 @@
     let IS_ADMIN = false;
     let lastDoc = null;
 
-    // -------- util ----------
+    // util ----------
     function setNow(){
       const now = new Date();
       $('pDate').value = now.toISOString().slice(0,10);
@@ -139,7 +140,6 @@
       return u.uid || '';
     }
 
-    // Detecta próximo tipo com base no último registro do próprio dia
     async function proximoTipo(){
       const list = await listRecentPunchesRaw(1);
       const last = list[0];
@@ -219,7 +219,7 @@
       refreshQueueBadge();
     }
 
-    // -------- eventos UI ----------
+    // eventos UI ----------
     $('pDate').addEventListener('change', updateDetectedType);
     $('pTime').addEventListener('change', updateDetectedType);
 
@@ -248,9 +248,19 @@
     };
 
     $('btnSync').onclick = async ()=>{
+      if (IS_ADMIN) {
+        $('status').textContent = 'Conta admin não sincroniza a fila. Use "Limpar fila".';
+        return;
+      }
       const r = await trySyncQueue();
       $('status').textContent = `Sincronizado: ${r.done} • Falhas: ${r.fail}`;
       await refreshAll();
+    };
+
+    $('btnClearQ').onclick = ()=>{
+      clearQueue();
+      refreshQueueBadge();
+      $('status').textContent = 'Fila descartada.';
     };
 
     $('btnPunchSave').onclick = async ()=>{
@@ -276,13 +286,11 @@
       }catch(e){
         console.error('addPunch falhou:', e);
         $('status').textContent = 'Falha ao salvar: ' + (e?.code ? `${e.code} — ` : '') + (e?.message || e);
-        // Enfileira para não perder (se não for admin)
         enqueuePunch({ note, type: nextType, atISO: at.toISOString() });
         refreshQueueBadge();
       }
     };
 
-    // Ajuste pré-preenchido pelo último
     $('btnAdjFromLast').onclick = ()=>{
       if (!lastDoc) return;
       const when = lastDoc.at?.toDate ? lastDoc.at.toDate()
@@ -319,7 +327,7 @@
       }catch(e){ $('adjMsg').textContent = 'Erro: ' + (e.message||e); }
     };
 
-    // -------- ciclo de login ----------
+    // ciclo de login ----------
     onUserChanged(async (user)=>{
       show($('loggedOut'), !user);
       show($('loggedIn'),  !!user);
@@ -329,13 +337,15 @@
       if (user) {
         await ensureRoleDoc(user.uid);
         IS_ADMIN = await isAdmin(user.uid);
-        if (IS_ADMIN) $('status').textContent = 'Sua conta é ADMIN e não marca ponto. Entre com uma conta de colaborador.';
         show($('adminLink'), IS_ADMIN);
+        show($('btnClearQ'), IS_ADMIN);       // admin pode descartar fila
+        if (IS_ADMIN) $('status').textContent = 'Sua conta é ADMIN e não marca ponto.';
 
         setNow();
         await refreshAll();
       } else {
         IS_ADMIN = false;
+        show($('btnClearQ'), false);
       }
     });
 
