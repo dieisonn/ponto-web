@@ -5,27 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Marcação de Ponto</title>
   <style>
-    :root { --muted:#777; --bd:#ddd; --radius:12px; }
-    body { font-family: system-ui, Arial; max-width: 720px; margin: 24px auto; padding: 0 12px; }
-    h1 { display:flex; align-items:center; gap:8px; }
-    .chip { font-size:12px; background:#eee; border:1px solid #ddd; border-radius:999px; padding:2px 8px; }
-    .card { border: 1px solid var(--bd); border-radius: var(--radius); padding: 16px; margin: 12px 0; }
+    body { font-family: system-ui, Arial; max-width: 760px; margin: 24px auto; padding: 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    label { display:block; margin:8px 0 4px; color:#333; }
-    input, select { padding:8px; border-radius:8px; border:1px solid #ccc; width: 100%; box-sizing: border-box; }
-    input[type="date"], input[type="time"] { width:auto; }
-    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; }
-    .muted { color: var(--muted); }
+    input,select,button,textarea { padding: 9px 12px; border-radius:10px; border:1px solid #ccc; }
+    input,select,textarea { width:100%; }
+    button { cursor:pointer; }
+    .muted { color:#666; }
     .hidden { display:none; }
-    ul { padding-left:18px; }
-    .right { margin-left:auto; }
   </style>
 </head>
 <body>
-  <h1>
-    Marcação de Ponto
-    <span id="badgeQueue" class="chip hidden" title="Batidas pendentes para sincronizar"></span>
-  </h1>
+  <h1>Marcação de Ponto <small id="badgeQueue" class="muted"></small></h1>
 
   <!-- ===== deslogado ===== -->
   <div id="loggedOut" class="card">
@@ -45,56 +36,51 @@
   <div id="loggedIn" class="card hidden">
     <p>Olá, <b id="who"></b></p>
 
-    <!-- Batida -->
     <div class="card">
       <h3>Bater ponto</h3>
       <div class="row">
-        <label>Data: <input type="date" id="pDate"></label>
-        <label>Hora: <input type="time" id="pTime" step="60"></label>
-        <div class="row" style="margin-left:8px">
-          <span>Tipo (detectado): <b id="detectedType">Entrada</b></span>
+        <label style="flex:1">Data:
+          <input id="pDate" type="date">
+        </label>
+        <label style="flex:1">Hora:
+          <input id="pTime" type="time" step="60">
+        </label>
+        <div style="flex:1; align-self:flex-end">Tipo (detectado):
+          <b id="typeDetected">-</b>
         </div>
       </div>
-
       <label>Motivo/Observação</label>
-      <input id="note" type="text" placeholder="Opcional" />
-
+      <input id="note" placeholder="Opcional" />
       <div class="row" style="margin-top:8px">
-        <button id="btnPunchSave">Registrar Entrada</button>
-        <button id="btnSync" class="right hidden">Sincronizar fila</button>
-        <button id="btnClearQ" class="right hidden" title="Descartar fila (apenas admin)">Limpar fila</button>
-        <button id="btnLogout" class="right">Sair</button>
+        <button id="btnPunch">Registrar</button>
+        <button id="btnSync" type="button">Sincronizar fila</button>
+        <button id="btnLogout" style="margin-left:auto">Sair</button>
       </div>
-
       <p id="status" class="muted"></p>
-      <p class="muted">Se estiver sem internet, o ponto fica na fila e sincroniza quando a conexão voltar.</p>
+      <small class="muted">Se estiver sem internet, o ponto fica na fila e sincroniza quando a conexão voltar.</small>
     </div>
 
-    <p id="dailyTotal" class="muted">Total de horas hoje: 00:00</p>
+    <p id="dailyTotal" class="muted"></p>
 
-    <!-- Registros do dia -->
     <div class="card">
       <h3>Registros de hoje</h3>
-      <ul id="dayList"></ul>
+      <ul id="listToday"></ul>
     </div>
 
-    <!-- Último registro (atalhos p/ ajuste/exclusão) -->
     <div class="card">
       <h3>Último registro</h3>
-      <ul id="punchList"></ul>
+      <ul id="lastList"></ul>
       <div class="row">
-        <button id="btnAdjFromLast" type="button">Ajustar este ponto…</button>
-        <button id="btnReqDelete" type="button">Pedir exclusão deste ponto…</button>
+        <button id="btnAdjFromLast">Ajustar este ponto…</button>
+        <button id="btnReqDelete">Pedir exclusão deste ponto…</button>
       </div>
-      <small id="lastMeta" class="muted"></small>
     </div>
 
-    <!-- Solicitar ajuste -->
     <div class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
-        <label>Data: <input type="date" id="adjDate"></label>
-        <label>Hora: <input type="time" id="adjTime" step="60"></label>
+        <label>Data: <input id="adjDate" type="date"></label>
+        <label>Hora: <input id="adjTime" type="time" step="60"></label>
         <label>Tipo:
           <select id="adjType">
             <option value="entrada">Entrada</option>
@@ -103,9 +89,9 @@
         </label>
       </div>
       <label>Motivo</label>
-      <input id="adjReason" type="text" placeholder="Explique o ajuste..." />
+      <input id="adjReason" placeholder="Explique o ajuste..." />
       <button id="btnAdjSend">Enviar pedido</button>
-      <p id="adjMsg"></p>
+      <p id="adjMsg" class="muted"></p>
     </div>
 
     <p><a href="admin.html" id="adminLink" class="hidden">Ir ao painel do Admin</a></p>
@@ -113,209 +99,135 @@
 
   <script type="module">
     import {
-      initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
-      addPunch, listRecentPunchesRaw, requestAdjustment,
-      listPunchesByDayForUser, computeDailyMs, msToHHMM,
-      getQueue, enqueuePunch, trySyncQueue, clearQueue
+      initApp, auth, onUserChanged, ensureRoleDoc, isAdmin, getProfile,
+      addPunch, nextTypeFor, listRecentPunchesRaw, listPunchesByDayForUser,
+      computeDailyMs, msToHHMM, requestAdjustment, flushQueue, getQueueSize
     } from './app.js';
 
     await initApp();
 
-    const $ = (id)=>document.getElementById(id);
-    const show = (el,v)=>{ if(el) el.classList.toggle('hidden', !v); };
-
-    let IS_ADMIN = false;
-    let lastDoc = null;
-
-    // util ----------
-    function setNow(){
+    const $ = id => document.getElementById(id);
+    const show = (el, v) => el.classList.toggle('hidden', !v);
+    function setNow() {
       const now = new Date();
       $('pDate').value = now.toISOString().slice(0,10);
-      $('pTime').value = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-    }
-    function nameFromUser(u){
-      if (!u) return '';
-      if (u.displayName && u.displayName.trim()) return u.displayName.trim();
-      if (u.email) return u.email.split('@')[0];
-      return u.uid || '';
+      $('pTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     }
 
-    async function proximoTipo(){
-      const list = await listRecentPunchesRaw(1);
-      const last = list[0];
-      const dateISO = $('pDate').value || new Date().toISOString().slice(0,10);
+    // ===== login
+    $('btnLogin').onclick = async () => {
+      $('msg').textContent = '';
+      try {
+        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        await m.signInWithEmailAndPassword(auth, $('email').value, $('password').value);
+      } catch (e) { $('msg').textContent = e.message || String(e); }
+    };
+    $('btnRegister').onclick = async () => {
+      $('msg').textContent = '';
+      try {
+        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+        const cred = await m.createUserWithEmailAndPassword(auth, $('email').value, $('password').value);
+        await ensureRoleDoc(cred.user.uid);
+      } catch (e) { $('msg').textContent = e.message || String(e); }
+    };
+    $('btnLogout').onclick = async () => {
+      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+      await m.signOut(auth);
+      location.reload();
+    };
 
-      if (!last) return 'entrada';
-      const when = last.at?.toDate ? last.at.toDate() :
-                   (last.ts?.toDate ? last.ts.toDate() : new Date(last.ts));
-      const lastDay = when.toISOString().slice(0,10);
-      if (lastDay === dateISO && (last.type || '').toLowerCase() === 'entrada') return 'saida';
-      return 'entrada';
+    function renderQueueBadge() {
+      const n = getQueueSize();
+      $('badgeQueue').textContent = n ? `(${n} pend.)` : '';
     }
 
-    async function updateDetectedType(){
-      const t = await proximoTipo();
-      $('detectedType').textContent = (t==='saida' ? 'Saída' : 'Entrada');
-      $('btnPunchSave').textContent = 'Registrar ' + (t==='saida' ? 'Saída' : 'Entrada');
-    }
-
-    function refreshQueueBadge(){
-      const n = getQueue().length;
-      const b = $('badgeQueue');
-      b.textContent = n ? `${n} pend.` : '';
-      show(b, n>0);
-      show($('btnSync'), n>0);
-      if (n>0) $('status').textContent = 'Você tem batidas pendentes para sincronizar.';
-    }
-
-    async function refreshLast(){
-      const list = await listRecentPunchesRaw(1);
-      const ul = $('punchList'); ul.innerHTML = '';
-      const li = document.createElement('li');
-
-      if (!list.length) {
-        lastDoc = null; li.textContent = 'Sem registros ainda.'; ul.appendChild(li); $('lastMeta').textContent=''; return;
-      }
-      const d = list[0]; lastDoc = d;
-      const when = (d.at && d.at.toDate ? d.at.toDate() : (d.ts && d.ts.toDate ? d.ts.toDate() : new Date()));
-      const tipo = d.type ? ` (${d.type})` : '';
-      const obs = d.note ? ' — '+d.note : '';
-      li.textContent = when.toLocaleString('pt-BR') + tipo + obs;
-      ul.appendChild(li);
-      $('lastMeta').textContent = '';
-    }
-
-    async function refreshDayRecords(){
+    // ===== UI punch
+    async function refreshDetectedType() {
       if (!auth.currentUser) return;
-      const day = $('pDate').value || new Date().toISOString().slice(0,10);
+      const t = await nextTypeFor(auth.currentUser.uid);
+      $('typeDetected').textContent = t === 'entrada' ? 'Entrada' : 'Saída';
+      $('btnPunch').textContent   = 'Registrar ' + (t === 'entrada' ? 'Entrada' : 'Saída');
+    }
+
+    async function refreshToday() {
+      if (!auth.currentUser) return;
+      const day = new Date().toISOString().slice(0,10);
       const rows = await listPunchesByDayForUser(auth.currentUser.uid, day);
-      const ul = $('dayList'); ul.innerHTML = '';
-      if (!rows.length) { ul.innerHTML = '<li>Nenhum registro hoje.</li>'; return; }
-      rows.sort((a,b)=>{
-        const ta = (a.at?.toMillis ? a.at.toMillis() : (a.ts?.toMillis ? a.ts.toMillis() : new Date(a.ts).getTime()));
-        const tb = (b.at?.toMillis ? b.at.toMillis() : (b.ts?.toMillis ? b.ts.toMillis() : new Date(b.ts).getTime()));
-        return ta - tb;
-      });
-      rows.forEach(r=>{
-        const d = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date(r.ts));
-        const li = document.createElement('li');
-        li.textContent = `${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${r.type})${r.note ? ' — '+r.note : ''}`;
-        ul.appendChild(li);
-      });
-    }
-
-    async function updateDailyTotal(){
-      if (!auth.currentUser) return;
-      const today = new Date().toISOString().slice(0,10);
-      const rows = await listPunchesByDayForUser(auth.currentUser.uid, today);
+      const ul = $('listToday'); ul.innerHTML = '';
+      if (!rows.length) {
+        const li = document.createElement('li'); li.textContent = 'Nenhum registro hoje.'; ul.appendChild(li);
+      } else {
+        rows.forEach(r => {
+          const dt = r.at?.toDate ? r.at.toDate() : (r.ts?.toDate ? r.ts.toDate() : new Date());
+          const li = document.createElement('li');
+          li.textContent = `${dt.toLocaleString('pt-BR')} (${r.type})${r.note ? ' — '+r.note : ''}`;
+          ul.appendChild(li);
+        });
+      }
       $('dailyTotal').textContent = 'Total de horas hoje: ' + msToHHMM(computeDailyMs(rows));
     }
 
-    async function refreshAll(){
-      await refreshLast();
-      await refreshDayRecords();
-      await updateDailyTotal();
-      await updateDetectedType();
-      refreshQueueBadge();
+    async function refreshLast() {
+      const list = await listRecentPunchesRaw(1);
+      const ul = $('lastList'); ul.innerHTML = '';
+      if (!list.length) { const li=document.createElement('li'); li.textContent='Sem registros.'; ul.appendChild(li); return; }
+      const d = list[0];
+      const when = d.at?.toDate ? d.at.toDate() : (d.ts?.toDate ? d.ts.toDate() : new Date());
+      const li = document.createElement('li');
+      li.textContent = `${when.toLocaleString('pt-BR')} (${d.type})${d.note ? ' — '+d.note : ''}`;
+      ul.appendChild(li);
+
+      // preparar ajuste rápido
+      $('btnAdjFromLast').onclick = () => {
+        $('adjDate').value = when.toISOString().slice(0,10);
+        $('adjTime').value = `${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
+        $('adjType').value = d.type || 'entrada';
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      };
+      $('btnReqDelete').onclick = async () => {
+        const reason = prompt('Explique por que deseja excluir este ponto:') || '';
+        await requestAdjustment({ action:'delete', targetPath: d._path, type: d.type, reason });
+        alert('Pedido enviado.');
+      };
     }
 
-    // eventos UI ----------
-    $('pDate').addEventListener('change', updateDetectedType);
-    $('pTime').addEventListener('change', updateDetectedType);
-
-    $('btnLogin').onclick = async ()=>{
-      $('msg').textContent=''; 
-      try{
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signInWithEmailAndPassword(auth,$('email').value,$('password').value);
-      }catch(e){ $('msg').textContent = e.message || String(e); }
-    };
-    $('btnRegister').onclick = async ()=>{
-      $('msg').textContent='';
-      try{
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        const cred = await m.createUserWithEmailAndPassword(auth,$('email').value,$('password').value);
-        await ensureRoleDoc(cred.user.uid);
-      }catch(e){ $('msg').textContent = e.message || String(e); }
-    };
-    $('btnLogout').onclick = async (ev)=>{
-      ev.preventDefault();
-      try{
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-        await m.signOut(auth);
-        setTimeout(()=>location.reload(), 150);
-      }catch(e){ $('status').textContent = 'Erro ao sair: ' + (e.message||e); }
-    };
-
-    $('btnSync').onclick = async ()=>{
-      if (IS_ADMIN) {
-        $('status').textContent = 'Conta admin não sincroniza a fila. Use "Limpar fila".';
-        return;
-      }
-      const r = await trySyncQueue();
-      $('status').textContent = `Sincronizado: ${r.done} • Falhas: ${r.fail}`;
-      await refreshAll();
-    };
-
-    $('btnClearQ').onclick = ()=>{
-      clearQueue();
-      refreshQueueBadge();
-      $('status').textContent = 'Fila descartada.';
-    };
-
-    $('btnPunchSave').onclick = async ()=>{
-      if (IS_ADMIN) {
-        $('status').textContent = 'Admins não registram ponto. Use uma conta de colaborador.';
-        return;
-      }
-      const dateISO = $('pDate').value;
-      const time    = $('pTime').value;
-      const note    = $('note').value || '';
-      if(!dateISO || !time){ $('status').textContent = 'Informe data e hora.'; return; }
-
-      const nextType = (await proximoTipo());
-      const [hh,mm] = time.split(':').map(x=>parseInt(x||'0',10));
-      const at = new Date(dateISO); at.setHours(hh,mm,0,0);
-
-      $('status').textContent = 'Registrando ponto...';
-      try{
-        await addPunch(note, nextType, at);
-        $('status').textContent = 'Ponto registrado!';
+    $('btnPunch').onclick = async () => {
+      $('status').textContent = 'Registrando...';
+      try {
+        const [Y,M,D] = $('pDate').value.split('-').map(n=>parseInt(n,10));
+        const [h,m]   = $('pTime').value.split(':').map(n=>parseInt(n,10));
+        const at = new Date(Y, (M-1), D, h, m, 0, 0);
+        const res = await addPunch($('note').value || '', at, null); // tipo auto
         $('note').value = '';
-        await refreshAll();
-      }catch(e){
-        console.error('addPunch falhou:', e);
-        $('status').textContent = 'Falha ao salvar: ' + (e?.code ? `${e.code} — ` : '') + (e?.message || e);
-        enqueuePunch({ note, type: nextType, atISO: at.toISOString() });
-        refreshQueueBadge();
+        $('status').textContent = `Ponto registrado! (${res.type})`;
+        await refreshDetectedType();
+        await refreshToday();
+        await refreshLast();
+      } catch (e) {
+        $('status').textContent = e.message || String(e);
+      } finally {
+        renderQueueBadge();
       }
     };
 
-    $('btnAdjFromLast').onclick = ()=>{
-      if (!lastDoc) return;
-      const when = lastDoc.at?.toDate ? lastDoc.at.toDate()
-                  : (lastDoc.ts?.toDate ? lastDoc.ts.toDate() : new Date());
-      $('adjDate').value = when.toISOString().slice(0,10);
-      $('adjTime').value = String(when.getHours()).padStart(2,'0') + ':' + String(when.getMinutes()).padStart(2,'0');
-      $('adjType').value = lastDoc.type || 'entrada';
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-    };
-    $('btnReqDelete').onclick = async ()=>{
-      if (!lastDoc || !lastDoc._path) { alert('Não foi possível identificar o ponto.'); return; }
-      const reason = prompt('Explique por que deseja excluir este ponto:') || '';
-      try{
-        await requestAdjustment({
-          action: 'delete',
-          targetPath: lastDoc._path,
-          type: lastDoc.type || 'entrada',
-          reason
-        });
-        alert('Pedido de exclusão enviado.');
-      }catch(e){ alert('Erro: ' + (e.message||e)); }
+    $('btnSync').onclick = async () => {
+      $('status').textContent = 'Sincronizando fila...';
+      try {
+        const r = await flushQueue();
+        $('status').textContent = `Sincronizado: ${r.synced}. Pendentes: ${r.pending}.`;
+        await refreshDetectedType();
+        await refreshToday();
+        await refreshLast();
+      } catch (e) {
+        $('status').textContent = e.message || String(e);
+      } finally {
+        renderQueueBadge();
+      }
     };
 
-    $('btnAdjSend').onclick = async ()=>{
-      try{
+    // ajuste manual
+    $('btnAdjSend').onclick = async () => {
+      try {
         await requestAdjustment({
           dateISO: $('adjDate').value,
           timeHHMM: $('adjTime').value,
@@ -324,34 +236,31 @@
         });
         $('adjMsg').textContent = 'Pedido enviado. Aguarde aprovação.';
         $('adjReason').value = '';
-      }catch(e){ $('adjMsg').textContent = 'Erro: ' + (e.message||e); }
+      } catch (e) { $('adjMsg').textContent = e.message || String(e); }
     };
 
-    // ciclo de login ----------
-    onUserChanged(async (user)=>{
+    // ciclo de login
+    onUserChanged(async (user) => {
+      renderQueueBadge();
       show($('loggedOut'), !user);
-      show($('loggedIn'),  !!user);
-      $('who').textContent = user ? nameFromUser(user) : '';
-      $('msg').textContent = ''; $('status').textContent = '';
+      show($('loggedIn'), !!user);
+      $('msg').textContent = '';
+      $('status').textContent = '';
+      if (!user) return;
 
-      if (user) {
-        await ensureRoleDoc(user.uid);
-        IS_ADMIN = await isAdmin(user.uid);
-        show($('adminLink'), IS_ADMIN);
-        show($('btnClearQ'), IS_ADMIN);       // admin pode descartar fila
-        if (IS_ADMIN) $('status').textContent = 'Sua conta é ADMIN e não marca ponto.';
+      // nome amigável
+      const prof = await getProfile(user.uid);
+      $('who').textContent = prof?.name ? prof.name : (user.email || '');
 
-        setNow();
-        await refreshAll();
-      } else {
-        IS_ADMIN = false;
-        show($('btnClearQ'), false);
-      }
+      setNow();
+      await ensureRoleDoc(user.uid);
+      await refreshDetectedType();
+      await refreshToday();
+      await refreshLast();
+
+      const admin = await isAdmin(user.uid);
+      show($('adminLink'), admin);
     });
-
-    // inicial
-    setNow();
-    refreshQueueBadge();
   </script>
 </body>
 </html>
