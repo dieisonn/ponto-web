@@ -5,14 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Painel Admin - Ponto</title>
   <style>
+    :root { --gap:12px; }
+    * { box-sizing: border-box; }
     body { font-family: system-ui, Arial; max-width: 1100px; margin: 24px auto; padding: 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
+    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; margin: 8px 0; }
+    .row > * { margin: 4px 0; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border:1px solid #ddd; padding:8px; font-size: 14px; }
     th { background:#f7f7f7; text-align:left; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 8px 0; }
-    .hidden { display:none; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    small.muted { color:#777; }
+    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; border:1px solid #bbb; background:#fff; }
+    input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; }
+    input[type="date"], input[type="month"] { min-width: 160px; }
+    .muted { color:#777; }
   </style>
 </head>
 <body>
@@ -24,19 +29,17 @@
   <div id="adminArea" class="hidden">
     <!-- Filtros diários -->
     <div class="row">
-      <label>Data:</label>
-      <input type="date" id="dayPicker" />
-      <label>Colaborador:</label>
-      <select id="userFilter"><option value="">Todos</option></select>
+      <label>Data:<br><input type="date" id="dayPicker" /></label>
+      <label>Colaborador:<br><select id="userFilter"><option value="">Todos</option></select></label>
       <button id="btnLoad">Carregar</button>
       <button id="btnCsvDay">Exportar CSV (dia)</button>
+      <span style="flex:1 1 auto"></span>
       <button id="btnLogout">Sair</button>
     </div>
 
     <!-- Relatório mensal -->
     <div class="row" style="margin-top:8px">
-      <label>Mês:</label>
-      <input type="month" id="monthPicker" />
+      <label>Mês:<br><input type="month" id="monthPicker" /></label>
       <button id="btnMonth">Relatório mensal</button>
       <button id="btnMonthCsv">Exportar CSV (mês)</button>
     </div>
@@ -48,7 +51,7 @@
       </table>
     </div>
 
-    <!-- Agora (status do time) -->
+    <!-- Agora -->
     <div class="card">
       <h3>Agora</h3>
       <table>
@@ -58,12 +61,11 @@
       <small class="muted">Baseado no último registro de hoje: “entrada” = em trabalho, “saída” = em intervalo.</small>
     </div>
 
-    <!-- Jornada por colaborador -->
+    <!-- Jornada -->
     <div class="card">
       <h3>Jornada de trabalho do colaborador</h3>
       <div class="row">
-        <label>Colaborador:</label>
-        <select id="schedUser"></select>
+        <label>Colaborador:<br><select id="schedUser"></select></label>
         <button id="btnSchedLoad">Carregar jornada</button>
       </div>
       <table>
@@ -73,7 +75,7 @@
       <div class="row"><button id="btnSchedSave">Salvar jornada</button></div>
     </div>
 
-    <!-- Pedidos de ajuste -->
+    <!-- Ajustes -->
     <div class="card">
       <h3>Pedidos de ajuste</h3>
       <button id="btnAdjRefresh">Atualizar pedidos</button>
@@ -101,7 +103,6 @@
     if ($('monthPicker')) $('monthPicker').value = new Date().toISOString().slice(0,7);
 
     async function loadUsersIntoFilters() {
-      // lê roles direto pela API Firestore
       const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
       const snap = await fs.getDocs(fs.collection(core.db, 'roles'));
       const sel1 = $('userFilter'); sel1.innerHTML = '<option value="">Todos</option>';
@@ -109,9 +110,10 @@
       snap.forEach(doc => {
         const d = doc.data();
         const label = (d.name || '') + (d.email ? ` (${d.email})` : '') || doc.id;
-        const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
-        sel1.appendChild(opt.cloneNode(true));
-        sel2.appendChild(opt);
+        const o1 = document.createElement('option'); o1.value = doc.id; o1.textContent = label;
+        const o2 = o1.cloneNode(true);
+        sel1.appendChild(o1);
+        sel2.appendChild(o2);
       });
     }
 
@@ -151,11 +153,9 @@
         (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day, items:[] }).items.push(r);
       });
       const tb = $('tbody'); tb.innerHTML = '';
-      const totals = {};
       Object.values(map).sort((a,b) => a.email.localeCompare(b.email) || a.day.localeCompare(b.day))
         .forEach(gr => {
           const ms = computeDailyMs(gr.items);
-          totals[gr.uid] = (totals[gr.uid]||0) + ms;
           const tr = document.createElement('tr');
           tr.innerHTML = `<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`;
           tb.appendChild(tr);
@@ -166,7 +166,6 @@
     async function renderNow() {
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
-      // agrupa por user
       const by = {};
       for (const r of rows) (by[r.uid] = by[r.uid] || {name:r.name,email:r.email, items:[]}).items.push(r);
       const tb = $('tbodyNow'); tb.innerHTML = '';
@@ -192,14 +191,13 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${WEEK[idx]}</td>
-        <td><input type="checkbox" data-d="${idx}" class="s-active" ${row.active?'checked':''}></td>
+        <td style="text-align:center"><input type="checkbox" data-d="${idx}" class="s-active" ${row.active?'checked':''}></td>
         <td><input type="time" value="${row.start||'08:00'}" data-d="${idx}" class="s-start"></td>
         <td><input type="time" value="${row.end||'17:00'}"   data-d="${idx}" class="s-end"></td>
-        <td><input type="number" value="${row.breakMin||60}" min="0" data-d="${idx}" class="s-break" style="width:80px"></td>
+        <td><input type="number" value="${row.breakMin||60}" min="0" data-d="${idx}" class="s-break" style="width:110px"></td>
       `;
       return tr;
     }
-
     async function loadSched() {
       const uid = $('schedUser').value; if (!uid) return;
       const data = await getSchedule(uid);
@@ -244,18 +242,35 @@
 
     // Botões topo
     $('btnLoad').onclick = async () => { await renderDay(); await renderNow(); };
-    $('btnCsvDay').onclick = () => { const day=$('dayPicker').value||'dia'; exportTableCSV('pontos_'+day.replace(/-/g,'')); };
+    $('btnCsvDay').onclick = () => { const day=$('dayPicker').value||'dia'; 
+      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
+      const data = Array.from(rows).map(tr =>
+        Array.from(tr.querySelectorAll('th,td'))
+          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"').join(',')
+      ).join('\n');
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
+      a.download = 'pontos_'+day.replace(/-/g,'')+'.csv'; a.click(); URL.revokeObjectURL(a.href);
+    };
     $('btnMonth').onclick   = renderMonth;
-    $('btnMonthCsv').onclick= () => { const m=$('monthPicker').value||'mes'; exportTableCSV('relatorio_'+m.replace('-','')); };
+    $('btnMonthCsv').onclick= () => { const m=$('monthPicker').value||'mes';
+      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
+      const data = Array.from(rows).map(tr =>
+        Array.from(tr.querySelectorAll('th,td'))
+          .map(td => '"' + (td.textContent||'').replace(/"/g,'""') + '"').join(',')
+      ).join('\n');
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
+      a.download = 'relatorio_'+m.replace('-','')+'.csv'; a.click(); URL.revokeObjectURL(a.href);
+    };
     $('btnLogout').onclick  = async () => { const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='index.html'; };
 
     $('btnAdjRefresh').onclick = loadAdjustments;
-
-    $('btnSchedLoad').onclick = loadSched;
-    $('btnSchedSave').onclick = saveSched;
+    $('btnSchedLoad').onclick  = loadSched;
+    $('btnSchedSave').onclick  = saveSched;
 
     // Gate admin
-    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'));
+    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     mAuth.onAuthStateChanged(auth, async (user) => {
       if (!user) { $('gateStatus').textContent='Não logado'; show($('adminArea'),false); return; }
       const ok = await isAdmin(user.uid);
