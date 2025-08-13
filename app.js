@@ -224,6 +224,21 @@ export function getQueue(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'
 export function enqueuePunch(item){
   const q=getQueue(); q.push(item); localStorage.setItem(QKEY, JSON.stringify(q));
 }
+// Apenas os campos que aceitamos na fila (pós-remoção de geo)
+const ALLOWED_QUEUE_FIELDS = ['note', 'type', 'atISO'];
+
+// Remove campos antigos (siteId, geo, etc.) e undefined
+function sanitizeQueueItem(it) {
+  if (!it) return { note: '', type: 'entrada', atISO: new Date().toISOString() };
+  const cleaned = {
+    note: (it.note ?? ''),
+    type: (it.type ?? 'entrada').toLowerCase(),
+    atISO: (it.atISO ?? new Date().toISOString())
+  };
+  // garante strings válidas
+  if (cleaned.type !== 'entrada' && cleaned.type !== 'saida') cleaned.type = 'entrada';
+  return cleaned;
+} 
 export async function trySyncQueue(){
   const q=getQueue(); const keep=[]; let done=0, fail=0;
   for (let i=0;i<q.length;i++){
@@ -237,3 +252,4 @@ export async function trySyncQueue(){
   localStorage.setItem(QKEY, JSON.stringify(keep));
   return { done, fail, left: keep.length };
 }
+
