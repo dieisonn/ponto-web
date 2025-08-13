@@ -5,58 +5,50 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Painel Admin - Ponto</title>
   <style>
-    :root { --gap: 12px; }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, Arial; max-width: 1100px; margin: 24px auto; padding: 0 12px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
-    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; }
+    body { font-family: system-ui, Roboto, Arial; max-width: 1100px; margin: 24px auto; padding: 0 12px; color:#222; }
+    h1 { margin:0 0 16px; }
+    .card { background:#fff; border:1px solid #e5e5e5; border-radius:14px; padding:16px; margin:12px 0; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    input,select,button { font-size:15px; }
+    input[type=date], input[type=month], select { border:1px solid #e5e5e5; border-radius:10px; padding:8px 10px; }
+    button { padding:10px 14px; border-radius:10px; border:1px solid #ddd; background:#fff; cursor:pointer; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border:1px solid #e9e9e9; padding:8px 10px; text-align:left; }
+    th { background:#f9f9f9; }
+    .muted { color:#666; }
     .hidden { display:none; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border:1px solid #ddd; padding:8px; }
-    th { background:#f7f7f7; text-align:left; }
-    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; border:1px solid #bbb; background:#fff; }
-    input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; }
-    .muted { color:#777; }
   </style>
 </head>
 <body>
   <h1>Painel do Administrador</h1>
   <p><a href="index.html">← Voltar</a></p>
 
-  <div class="card"><p>Status: <b id="gateStatus">Verificando...</b></p></div>
+  <div class="card"><b>Status:</b> <span id="gate">Verificando...</span></div>
 
   <div id="adminArea" class="hidden">
     <div class="row">
-      <label>Data: <input type="date" id="dayPicker" /></label>
-      <label>Colaborador:
-        <select id="userFilter"><option value="">Todos</option></select>
-      </label>
+      <label>Data:</label><input type="date" id="dayPicker" />
       <button id="btnLoad">Carregar</button>
-      <button id="btnExport">Exportar CSV (dia)</button>
-      <span style="flex:1 1 auto"></span>
-      <button id="btnLogout">Sair</button>
-    </div>
-
-    <div class="row">
-      <label>Mês: <input type="month" id="monthPicker" /></label>
-      <button id="btnMonth">Relatório mensal</button>
-      <button id="btnMonthCsv">Exportar CSV (mês)</button>
+      <button id="btnLogout" class="right">Sair</button>
     </div>
 
     <div class="card">
       <table>
-        <thead><tr><th>Colaborador</th><th>Email</th><th>Horário / Total</th></tr></thead>
+        <thead>
+          <tr><th>Colaborador</th><th>Email</th><th>Horário / Tipo / Obs</th></tr>
+        </thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
 
     <div class="card">
-      <div class="row">
-        <h3 style="margin:0">Pedidos de ajuste</h3>
-        <button id="btnAdjRefresh">Atualizar pedidos</button>
+      <div class="row"><h3 style="margin:0">Pedidos de ajuste</h3>
+        <button id="btnAdj">Atualizar pedidos</button>
       </div>
-      <table>
-        <thead><tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
+      <table style="margin-top:8px">
+        <thead>
+          <tr><th>Colaborador</th><th>Ação</th><th>Tipo</th><th>Data/Hora</th><th>Motivo</th><th>Ações</th></tr>
+        </thead>
         <tbody id="tbodyAdj"></tbody>
       </table>
     </div>
@@ -65,142 +57,74 @@
   <script type="module">
     import * as core from './app.js';
     await core.initApp();
+    const { auth, isAdmin, listPunchesByDayAllUsers,
+            listPendingAdjustments, approveAdjustment, rejectAdjustment } = core;
 
-    const {
-      auth, db, isAdmin, listPunchesByDayAllUsers,
-      listPunchesByMonthAllUsers, computeDailyMs, msToHHMM,
-      listPendingAdjustments, approveAdjustment, rejectAdjustment
-    } = core;
+    const $ = id => document.getElementById(id);
+    const show = (el,v)=> el.classList.toggle('hidden', !v);
 
-    const $ = (id) => document.getElementById(id);
-    const show = (el, v) => el && el.classList.toggle('hidden', !v);
+    if ($('dayPicker')) $('dayPicker').value = new Date().toISOString().slice(0,10);
 
-    // Defaults
-    $('dayPicker').value = new Date().toISOString().slice(0,10);
-    $('monthPicker').value = new Date().toISOString().slice(0,7);
-
-    // Carrega lista de usuários no filtro
-    async function loadUsersIntoFilter() {
-      const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-      const snap = await fs.getDocs(fs.collection(db, 'roles'));
-      const sel = $('userFilter'); sel.innerHTML = '<option value="">Todos</option>';
-      snap.forEach(doc => {
-        const d = doc.data();
-        const label = d.name ? `${d.name} (${d.email||''})` : (d.email || doc.id);
-        const opt = document.createElement('option'); opt.value = doc.id; opt.textContent = label;
-        sel.appendChild(opt);
-      });
-    }
-
-    // Render dia
-    async function loadDaily() {
+    async function loadDaily(){
       const day = $('dayPicker').value;
       const rows = await listPunchesByDayAllUsers(day);
-      const uid = $('userFilter').value;
-      renderTable(uid ? rows.filter(r => r.uid === uid) : rows);
-    }
-    function renderTable(rows) {
-      const tbody = $('tbody'); tbody.innerHTML = '';
-      rows.forEach(r => {
-        const d = r.at?.toDate?.() || r.ts?.toDate?.() || new Date(r.ts);
-        const tr = document.createElement('tr');
-        tr.innerHTML =
-          `<td>${r.name||''}</td><td>${r.email||''}</td>` +
-          `<td>${d.toLocaleString('pt-BR')}${r.type?` (${r.type})`:''}${r.note?` — ${r.note}`:''}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Export CSV (primeira tabela da página)
-    function exportTableCSV(prefix) {
-      const rows = Array.from(document.querySelectorAll('table'))[0].querySelectorAll('tr');
-      const data = Array.from(rows).map(tr =>
-        Array.from(tr.querySelectorAll('th,td'))
-          .map(td => `"${(td.textContent||'').replace(/"/g,'""')}"`).join(',')
-      ).join('\n');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8;'}));
-      a.download = prefix + '.csv'; a.click(); URL.revokeObjectURL(a.href);
-    }
-
-    // Relatório mensal
-    async function loadMonthly() {
-      const m = $('monthPicker').value; if (!m) return;
-      const rows = await listPunchesByMonthAllUsers(m.replace('-',''));
-      const map = {};
-      rows.forEach(r => {
-        const dt = r.at?.toDate?.() || r.ts?.toDate?.() || new Date(r.ts);
-        const day = dt.toISOString().slice(0,10);
-        const key = r.uid + '|' + day;
-        (map[key] = map[key] || { uid:r.uid, name:r.name, email:r.email, day, items:[] }).items.push(r);
-      });
-
-      const tbody = $('tbody'); tbody.innerHTML = '';
-      const totals = {};
-      Object.values(map).sort((a,b) =>
-        (a.email||'').localeCompare(b.email||'') || a.day.localeCompare(b.day)
-      ).forEach(gr => {
-        const ms = computeDailyMs(gr.items);
-        totals[gr.uid] = (totals[gr.uid]||0) + ms;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${gr.name||''}</td><td>${gr.email||''}</td><td>${gr.day} — ${msToHHMM(ms)}</td>`;
-        tbody.appendChild(tr);
-      });
-      Object.keys(totals).forEach(uid => {
-        const any = rows.find(r => r.uid === uid);
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td><b>Total ${any?.name||''}</b></td><td>${any?.email||''}</td><td><b>${msToHHMM(totals[uid])}</b></td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Pedidos de ajuste
-    async function loadAdjustments() {
-      const pend = await listPendingAdjustments();
-      const tb = $('tbodyAdj'); tb.innerHTML = '';
-      pend.forEach(r => {
-        const d = r.tsWanted?.toDate?.() || (r.tsWanted ? new Date(r.tsWanted) : null);
-        const tr = document.createElement('tr');
-        tr.innerHTML =
-          `<td>${r.email||r.uid}</td>` +
-          `<td>${r.action||'include'}</td>` +
-          `<td>${r.type||'-'}</td>` +
-          `<td>${d ? d.toLocaleString('pt-BR') : '-'}</td>` +
-          `<td>${r.reason||''}</td>` +
-          `<td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
-        tr.querySelector('.ok').onclick = async () => { await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); };
-        tr.querySelector('.no').onclick = async () => { const why = prompt('Motivo (opcional):') || ''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
+      const tb = $('tbody'); tb.innerHTML='';
+      if (!rows.length){
+        const tr=document.createElement('tr'); tr.innerHTML='<td colspan="3" class="muted">Sem registros.</td>'; tb.appendChild(tr); return;
+      }
+      rows.forEach(r=>{
+        const d = r.at?.toDate ? r.at.toDate() : new Date(r.at||r.ts);
+        const tr=document.createElement('tr');
+        tr.innerHTML = `<td>${r.name||''}</td>
+                        <td>${r.email||''}</td>
+                        <td>${d.toLocaleString('pt-BR')} (${r.type})${r.note? ' — '+r.note:''}</td>`;
         tb.appendChild(tr);
       });
     }
 
-    // Botões
+    async function loadAdjustments(){
+      const pend = await listPendingAdjustments();
+      const tb = $('tbodyAdj'); tb.innerHTML='';
+      if (!pend.length){
+        const tr=document.createElement('tr'); tr.innerHTML='<td colspan="6" class="muted">Nenhum pedido pendente.</td>'; tb.appendChild(tr); return;
+      }
+      pend.forEach(r=>{
+        const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted? new Date(r.tsWanted): null);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.email||r.uid}</td>
+                        <td>${r.action||'include'}</td>
+                        <td>${r.type||'-'}</td>
+                        <td>${d? d.toLocaleString('pt-BR'): '-'}</td>
+                        <td>${r.reason||''}</td>
+                        <td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
+        tr.querySelector('.ok').onclick = async ()=>{
+          await approveAdjustment(r, auth.currentUser.uid);
+          await loadAdjustments(); await loadDaily();
+        };
+        tr.querySelector('.no').onclick = async ()=>{
+          const why = prompt('Motivo (opcional):')||'';
+          await rejectAdjustment(r.id, auth.currentUser.uid, why);
+          await loadAdjustments();
+        };
+        tb.appendChild(tr);
+      });
+    }
+
     $('btnLoad').onclick = loadDaily;
-    $('btnExport').onclick = () => exportTableCSV(`pontos_${($('dayPicker').value||'dia').replace(/-/g,'')}`);
-    $('btnMonth').onclick = loadMonthly;
-    $('btnMonthCsv').onclick = () => exportTableCSV(`relatorio_${($('monthPicker').value||'mes').replace('-','')}`);
-    $('btnAdjRefresh').onclick = loadAdjustments;
-    $('btnLogout').onclick = async () => {
+    $('btnAdj').onclick  = loadAdjustments;
+    $('btnLogout').onclick = async ()=>{
       const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      await m.signOut(auth); location.href = 'index.html';
+      await m.signOut(auth); location.href='index.html';
     };
 
-    // Gate admin robusto
+    // Gate
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async (user) => {
-      if (!user) { $('gateStatus').textContent = 'Não logado'; show($('adminArea'), false); return; }
-      try {
-        const ok = await isAdmin(user.uid);
-        $('gateStatus').textContent = ok ? 'Admin OK' : 'Sem permissão';
-        show($('adminArea'), ok);
-        if (ok) {
-          await loadUsersIntoFilter();
-          await loadDaily();
-          await loadAdjustments();
-        }
-      } catch (e) {
-        $('gateStatus').textContent = 'Erro ao verificar: ' + (e.message||e);
-      }
+    mAuth.onAuthStateChanged(auth, async (user)=>{
+      if (!user){ $('gate').textContent='Não logado'; show($('adminArea'), false); return; }
+      const ok = await isAdmin(user.uid);
+      $('gate').textContent = ok ? 'Admin OK' : 'Sem permissão';
+      show($('adminArea'), ok);
+      if (ok){ await loadDaily(); await loadAdjustments(); }
     });
   </script>
 </body>
