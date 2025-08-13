@@ -5,16 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Marcação de Ponto</title>
   <style>
+    :root { --gap:12px; }
+    * { box-sizing: border-box; }
     body { font-family: system-ui, Arial; max-width: 860px; margin: 24px auto; padding: 0 12px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
+    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; }
+    .row > * { margin: 4px 0; }
+    button { padding: 10px 14px; border-radius: 10px; cursor: pointer; border:1px solid #bbb; background:#fff; }
     input, select { padding: 8px; border-radius: 8px; border:1px solid #ccc; }
-    label { display:block; margin:8px 0 4px; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input[type="date"], input[type="time"] { min-width: 150px; }
+    input[type="text"] { width: 100%; }
     .hidden { display:none; }
     ul { padding-left: 18px; }
     .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eee; font-size:12px; margin-left:6px; }
     .ok { color:#0a7a0a; } .warn { color:#b00020; }
+    h1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .spacer { flex:1 1 auto; }
   </style>
 </head>
 <body>
@@ -42,20 +48,17 @@
     <div class="card">
       <h3>Bater ponto</h3>
       <div class="row">
-        <label>Data:
-          <input type="date" id="pDate">
-        </label>
-        <label>Hora:
-          <input type="time" id="pTime" step="60">
-        </label>
+        <label>Data:<br><input type="date" id="pDate"></label>
+        <label>Hora:<br><input type="time" id="pTime" step="60"></label>
         <div>Tipo (detectado): <b id="autoType">—</b></div>
+        <span class="spacer"></span>
+        <button id="btnLogout">Sair</button>
       </div>
       <label>Motivo/Observação</label>
-      <input id="note" type="text" placeholder="Opcional" style="width:100%" />
+      <input id="note" type="text" placeholder="Opcional" />
       <div class="row" style="margin-top:8px">
         <button id="btnPunchSave">Registrar <span id="btnTypeLabel">Entrada</span></button>
-        <button id="btnSync" type="button">Sincronizar fila</button>
-        <button id="btnLogout" style="margin-left:auto">Sair</button>
+        <button id="btnSync" type="button" class="hidden">Sincronizar fila</button>
       </div>
       <p id="status"></p>
       <small>Se estiver sem internet, o ponto fica na fila e sincroniza quando a conexão voltar.</small>
@@ -90,9 +93,9 @@
     <div class="card">
       <h3>Solicitar ajuste</h3>
       <div class="row">
-        <label>Data: <input type="date" id="adjDate"></label>
-        <label>Hora: <input type="time" id="adjTime" step="60"></label>
-        <label>Tipo:
+        <label>Data:<br><input type="date" id="adjDate"></label>
+        <label>Hora:<br><input type="time" id="adjTime" step="60"></label>
+        <label>Tipo:<br>
           <select id="adjType">
             <option value="entrada">Entrada</option>
             <option value="saida">Saída</option>
@@ -100,7 +103,7 @@
         </label>
       </div>
       <label>Motivo</label>
-      <input id="adjReason" type="text" placeholder="Explique o ajuste..." style="width:100%" />
+      <input id="adjReason" type="text" placeholder="Explique o ajuste..." />
       <button id="btnAdjSend">Enviar pedido</button>
       <p id="adjMsg"></p>
     </div>
@@ -120,7 +123,7 @@
     const $ = id => document.getElementById(id);
     const show = (el, v) => el && el.classList.toggle('hidden', !v);
 
-    // ========= fila offline (localStorage) =========
+    // ========= fila offline =========
     const QUEUE_KEY = 'ponto_queue_v1';
     function readQueue(){ try{ return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]'); }catch{ return []; } }
     function writeQueue(arr){ localStorage.setItem(QUEUE_KEY, JSON.stringify(arr)); }
@@ -141,7 +144,6 @@
       $('pTime').value = hh + ':' + mm;
     }
     function ymd(d){ return d.toISOString().slice(0,10); }
-
     setNow();
 
     // ========= login =========
@@ -168,7 +170,7 @@
       } catch(e) { $('status').textContent = 'Erro ao sair: ' + (e.message||e); }
     };
 
-    // ========= detectar tipo automático =========
+    // ========= detectar tipo =========
     async function refreshAutoType() {
       const last = await listRecentPunchesRaw(1);
       const today = new Date().toISOString().slice(0,10);
@@ -180,7 +182,7 @@
       $('btnTypeLabel').textContent = next;
     }
 
-    // ========= registrar ponto =========
+    // ========= registrar =========
     $('btnPunchSave').onclick = async () => {
       const dateISO = $('pDate').value;
       const time = $('pTime').value;
@@ -196,32 +198,25 @@
         $('note').value = '';
         await refreshAll();
       } catch(e) {
-        // cai para fila local (offline ou permissão momentânea)
-        const q = readQueue();
-        q.push({ note, at: at.toISOString() });
-        writeQueue(q);
-        $('status').textContent = 'Sem conexão ou permissão momentânea. Adicionado à fila.';
+        const q = readQueue(); q.push({ note, at: at.toISOString() }); writeQueue(q);
+        $('status').textContent = 'Sem conexão. Adicionado à fila.';
         renderQueueBadge();
       }
     };
-
     $('btnSync').onclick = async () => {
       const q = readQueue(); if (!q.length) return;
       let ok = 0, fail = 0;
       for (const item of q) {
-        try {
-          await addPunch(item.note || '', new Date(item.at), null);
-          ok++;
-        } catch(e) { fail++; }
+        try { await addPunch(item.note || '', new Date(item.at), null); ok++; }
+        catch { fail++; }
       }
-      writeQueue([]);
-      renderQueueBadge();
+      writeQueue([]); renderQueueBadge();
       $('status').textContent = fail ? `Sincronizado com falhas (${ok} ok, ${fail} erro).`
                                      : `Sincronizado (${ok} enviados).`;
       await refreshAll();
     };
 
-    // ========= listas/paineis =========
+    // ========= paineis =========
     async function refreshLast() {
       const list = await listRecentPunchesRaw(1);
       const ul = $('punchList'); ul.innerHTML = '';
@@ -232,7 +227,6 @@
       li.textContent = when.toLocaleString('pt-BR') + (d.type? ` (${d.type})`:'') + (d.note? ' — '+d.note:'');
       ul.appendChild(li);
     }
-
     async function refreshTodayList() {
       if (!auth.currentUser) return;
       const dayISO = new Date().toISOString().slice(0,10);
@@ -251,34 +245,25 @@
         ul.appendChild(li);
       }
     }
-
     async function refreshBanks() {
       if (!auth.currentUser) return;
       const dayISO = new Date().toISOString().slice(0,10);
       const daily = await computeDailyBank(auth.currentUser.uid, dayISO);
       $('bankToday').innerHTML = `${daily.bankMs>=0?'<span class="ok">':''}${msToHHMM(daily.bankMs)}${daily.bankMs>=0?'</span>':''}  ` +
         `<small class="pill">req: ${msToHHMM(daily.reqMs)} • trab: ${msToHHMM(daily.workedMs)} • fator: ${daily.rate}x${daily.holiday?' (feriado)':''}</small>`;
-
       const ym = dayISO.slice(0,7).replace('-','');
       const monthMs = await computeMonthlyBank(auth.currentUser.uid, ym);
       $('bankMonth').innerHTML = `${monthMs>=0?'<span class="ok">':''}${msToHHMM(monthMs)}${monthMs>=0?'</span>':''}`;
     }
-
     async function refreshHeaderName(user){
       const profile = await getUserProfile(user.uid);
       $('who').textContent = profile?.name || (user.email||'');
     }
-
     async function refreshAll(){
-      await Promise.all([
-        refreshAutoType(),
-        refreshLast(),
-        refreshTodayList(),
-        refreshBanks()
-      ]);
+      await Promise.all([ refreshAutoType(), refreshLast(), refreshTodayList(), refreshBanks() ]);
     }
 
-    // Ajustes rápidos
+    // Ajustes
     let lastDoc = null;
     $('btnAdjFromLast').onclick = async () => {
       const list = await listRecentPunchesRaw(1);
