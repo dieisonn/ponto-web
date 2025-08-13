@@ -1,4 +1,5 @@
 // app.js — Firebase + Ponto (sem geolocalização) + consultas dia/mês + ajustes
+// Versão: consultas sem orderBy no Firestore (ordenamos em memória) -> não precisa de índice composto.
 
 export let app, auth, db;
 let boot;
@@ -39,7 +40,6 @@ export async function ensureRoleDoc(uid, displayName, email){
   if (!s.exists()) {
     await fs.setDoc(ref, { role:'user', name: displayName || '', email: email || '' }, { merge:true });
   } else {
-    // só atualiza nome/email; regra garante que role não muda pelo user
     await fs.updateDoc(ref, { name: displayName || '', email: email || '' });
   }
 }
@@ -62,25 +62,31 @@ function dayISOfromDate(d){
   const dd=String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
 }
+function millisOf(x){
+  if (!x) return 0;
+  if (x.toMillis) return x.toMillis();
+  if (x.toDate) return x.toDate().getTime();
+  return new Date(x).getTime();
+}
 
 /* ===== Tipo seguinte (Entrada|Saída) garantido ===== */
 export async function getNextTypeFor(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-
   const d = new Date(dayISO);
   const period = yyyymm(d);
 
-  // busca último do dia em ordem decrescente por 'at'
+  // Apenas where(day==) — sem orderBy (evita índice) => ordenamos no cliente
   const q = fs.query(
     fs.collection(db, 'punches', uid, period),
-    fs.where('day','==', dayISO),
-    fs.orderBy('at','desc'),
-    fs.limit(1)
+    fs.where('day','==', dayISO)
   );
   const snap = await fs.getDocs(q);
   if (snap.empty) return 'entrada';
-  const last = snap.docs[0].data();
+
+  const all = snap.docs.map(doc => doc.data());
+  all.sort((a,b)=> millisOf(b.at || b.ts) - millisOf(a.at || a.ts)); // desc
+  const last = all[0];
   return last.type === 'entrada' ? 'saida' : 'entrada';
 }
 
@@ -94,16 +100,16 @@ export async function addPunchAuto({ at, note='' }){
   const atDate = at instanceof Date ? new Date(at) : new Date();
   const dayISO = dayISOfromDate(atDate);
   const period = yyyymm(atDate);
-  const nextType = await getNextTypeFor(user.uid, dayISO); // garante alternância
+  const nextType = await getNextTypeFor(user.uid, dayISO); // alternância garantida
 
   const ref = fs.doc(fs.collection(db, 'punches', user.uid, period));
   await fs.setDoc(ref, {
     ts: fs.Timestamp.now(),                  // servidor
-    at: fs.Timestamp.fromDate(atDate),       // carimbo escolhido (cliente)
-    day: dayISO,                             // facilita consultas do dia
+    at: fs.Timestamp.fromDate(atDate),       // horário do cliente
+    day: dayISO,                             // chave de consulta do dia
     email: user.email || '',
     uid: user.uid,
-    type: nextType,                          // ENFORCEMENT: sempre alternado
+    type: nextType,
     note: note || ''
   });
 }
@@ -115,24 +121,23 @@ export async function listPunchesByDayForUser(uid, dayISO){
   const d = new Date(dayISO);
   const period = yyyymm(d);
 
+  // Apenas where(day==) — sem orderBy (evita índice)
   const q = fs.query(
     fs.collection(db,'punches',uid,period),
-    fs.where('day','==', dayISO),
-    fs.orderBy('at','asc')
+    fs.where('day','==', dayISO)
   );
   const s = await fs.getDocs(q);
-  return s.docs.map(doc => ({ _id:doc.id, _path:doc.ref.path, ...doc.data() }));
+  const arr = s.docs.map(doc => ({ _id:doc.id, _path:doc.ref.path, ...doc.data() }));
+  // Ordena no cliente (asc)
+  arr.sort((a,b)=> millisOf(a.at || a.ts) - millisOf(b.at || b.ts));
+  return arr;
 }
 
 export function computeDailyMs(punchesAsc){
-  const arr = punchesAsc.slice().sort((a,b)=>{
-    const ta = a.at?.toMillis ? a.at.toMillis() : new Date(a.at || a.ts).getTime();
-    const tb = b.at?.toMillis ? b.at.toMillis() : new Date(b.at || b.ts).getTime();
-    return ta - tb;
-  });
+  const arr = punchesAsc.slice().sort((a,b)=> millisOf(a.at||a.ts) - millisOf(b.at||b.ts));
   let total=0, start=null;
   for (const p of arr){
-    const t = p.at?.toMillis ? p.at.toMillis() : new Date(p.at || p.ts).getTime();
+    const t = millisOf(p.at || p.ts);
     if (p.type==='entrada') start=t;
     else if (p.type==='saida' && start!=null){ total += (t-start); start=null; }
   }
@@ -148,7 +153,6 @@ export async function listPunchesByDayAllUsers(dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
 
-  // pega todos usuários de roles
   const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
   const list = [];
   const period = yyyymm(new Date(dayISO));
@@ -158,8 +162,7 @@ export async function listPunchesByDayAllUsers(dayISO){
     const profile = r.data() || {};
     const q = fs.query(
       fs.collection(db,'punches',uid,period),
-      fs.where('day','==',dayISO),
-      fs.orderBy('at','asc')
+      fs.where('day','==',dayISO) // sem orderBy
     );
     const s = await fs.getDocs(q);
     s.forEach(d=>{
@@ -172,12 +175,8 @@ export async function listPunchesByDayAllUsers(dayISO){
       });
     });
   }
-  // já vem asc; se precisar:
-  list.sort((a,b)=>{
-    const ta = a.at?.toMillis ? a.at.toMillis() : new Date(a.at||a.ts).getTime();
-    const tb = b.at?.toMillis ? b.at.toMillis() : new Date(b.at||b.ts).getTime();
-    return ta - tb;
-  });
+  // Ordena no cliente (asc)
+  list.sort((a,b)=> millisOf(a.at||a.ts) - millisOf(b.at||b.ts));
   return list;
 }
 
@@ -211,7 +210,7 @@ export async function listPendingAdjustments(){
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const q = fs.query(fs.collection(db,'adjust_requests'),
                      fs.where('status','==','pending'),
-                     fs.orderBy('createdAt','asc'));
+                     fs.orderBy('createdAt','asc')); // essa ordenação é na mesma coleção e costuma ter índice automático
   const s = await fs.getDocs(q);
   return s.docs.map(d=>({ id:d.id, ...d.data() }));
 }
