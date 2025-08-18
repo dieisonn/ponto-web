@@ -1,4 +1,5 @@
-const CACHE = 'ponto-v3';             // <- troquei a versão
+// Cache básico para PWA (GitHub Pages-friendly)
+const CACHE = 'ponto-v4';
 const ASSETS = [
   'admin.html',
   'index.html',
