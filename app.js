@@ -56,7 +56,7 @@ export function msToHHMM(ms){
   const s=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   return sign<0?`-${s}`:s;
 }
-function hhmmToMin(s){ const [h,m]=String(s||'0:0').split(':').map(x=>parseInt(x||'0',10)); return (isNaN(h)?0:h)*60+(isNaN(m)?0:m; }
+function hhmmToMin(s){ const [h,m]=String(s||'0:0').split(':').map(x=>parseInt(x||'0',10)); return (isNaN(h)?0:h)*60+(isNaN(m)?0:m;) }
 const ROUND5 = 5*60*1000;
 
 /* ===== Auth / perfis ===== */
@@ -500,3 +500,4 @@ export async function getNextTypeFor(uid){
   const st = await getStatus(uid);
   return !st.hasOpen ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida');
 }
+
