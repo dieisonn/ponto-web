@@ -1,0 +1,9 @@
+{
+  "admin.title": "Admin Panel",
+  "user.title": "Time Clock",
+  "btn.load": "Load",
+  "btn.logout": "Sign out",
+  "btn.generate": "Generate",
+  "btn.csv": "CSV",
+  "btn.xlsx": "XLSX"
+}
