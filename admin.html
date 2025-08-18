@@ -149,7 +149,6 @@
       $('pillType').textContent = (next==='entrada' ? 'Entrada' : next==='saida' ? 'Saída' : 'Fim Pausa');
       $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada' : next==='saida' ? 'Saída' : 'Fim Pausa');
 
-      // controla botões de pausa conforme status
       const st = await getStatus(user.uid);
       show($('btnPauseStart'), st.hasOpen && !st.hasBreakOpen);
       show($('btnPauseEnd'), st.hasOpen && st.hasBreakOpen);
@@ -229,7 +228,6 @@
     };
     $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.reload(); };
 
-    // chips
     document.addEventListener('click', (ev)=>{ if (ev.target.classList.contains('chip')){ $('note').value = ($('note').value? $('note').value+'; ':'') + ev.target.textContent; } });
 
     // LGPD download
@@ -243,7 +241,6 @@
       URL.revokeObjectURL(url);
     };
 
-    // login state
     onUserChanged(async (user)=>{
       if (!user){ location.href = './'; return; }
       $('hello').textContent = `Olá, ${user.displayName||user.email||''}`;
