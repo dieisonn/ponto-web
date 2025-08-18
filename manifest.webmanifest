@@ -1,7 +1,8 @@
 {
   "name": "Ponto",
   "short_name": "Ponto",
-  "start_url": "/admin.html",
+  "start_url": "admin.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#4b4bd6",
   "theme_color": "#4b4bd6",
