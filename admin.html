@@ -1,73 +1,105 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Marcação de Ponto</title>
+  <link rel="manifest" href="manifest.webmanifest">
   <style>
-    :root { --card:#f8f8f8; --bd:#e5e5e5; --txt:#222; --mut:#666; --pri:#4b5; }
-    body { font-family: system-ui, Roboto, Arial; max-width: 980px; margin: 24px auto; padding: 0 12px; color:var(--txt); }
-    h1 { margin: 0 0 16px; }
-    .card { background: #fff; border:1px solid var(--bd); border-radius: 14px; padding: 16px; margin: 12px 0; }
-    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    label { font-weight: 600; margin-right: 8px; }
-    input, select, button, textarea { font-size: 15px; }
-    input[type=date], input[type=time], input[type=text], textarea, select {
-      border:1px solid var(--bd); border-radius:10px; padding:8px 10px;
+    :root{
+      --brand:#4b4bd6; --brand-600:#4646cc; --brand-400:#7575e6;
+      --ink:#1f2430; --mut:#637085; --bg:#f6f7fb; --card:#fff; --bd:#e6e8f0;
+      --ok:#1b7a3b; --bad:#b11;
     }
-    textarea { width:100%; min-height:44px; resize: vertical; }
-    button { padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer; }
-    button.primary { background:#222; color:#fff; border-color:#222; }
-    .muted { color:var(--mut); }
-    .hidden { display:none; }
-    ul.clean { margin:0; padding-left:20px; }
-    .pill { display:inline-block; background:#eee; border-radius:999px; padding:4px 8px; font-size:13px; margin-left:8px; }
-    .right { margin-left:auto; }
-    .btns-row { display:flex; gap:10px; flex-wrap:wrap; }
-    .kpi { display:flex; gap:20px; align-items:center; flex-wrap:wrap; font-size:14px; }
-    .kpi span { background:#f3f3f3; border:1px solid var(--bd); padding:6px 10px; border-radius:999px; }
+    [data-theme="dark"]{
+      --bg:#0f1220; --card:#14172a; --ink:#e9ecff; --mut:#a7b0ca; --bd:#262a44;
+    }
+    html,body{ background:var(--bg); color:var(--ink); }
+    body{ font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial; max-width:980px; margin:24px auto; padding:0 12px; }
+    h1{ margin:0 0 16px }
+    .card{ background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; margin:12px 0; box-shadow:0 2px 6px rgba(0,0,0,.05) }
+    .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+    label{ font-weight:600; margin-right:8px }
+    input,button,select{ font-size:15px }
+    input[type=date],input[type=time],input[type=text],select{ border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:#fff }
+    [data-theme="dark"] input,[data-theme="dark"] select{ background:#0f1122; color:var(--ink); border-color:#2a2f55 }
+    button{ padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer; transition:transform .06s ease }
+    button:active{ transform:scale(0.98) }
+    button.primary{ background:var(--brand); color:#fff; border-color:var(--brand) }
+    button.primary:hover{ background:var(--brand-600) }
+    .muted{ color:var(--mut) }
+    .hidden{ display:none }
+    ul.clean{ margin:0; padding-left:20px }
+    .pill{ display:inline-block; border-radius:999px; padding:4px 10px; font-size:13px; }
+    .positive{ background:#e8f7ec; border:1px solid #c6ebd2; color:var(--ok) }
+    .negative{ background:#ffecec; border:1px solid #ffd2d2; color:var(--bad) }
+    .chip{ padding:6px 10px; border-radius:999px; background:#eef0ff; color:var(--brand); border:1px solid var(--brand-400); cursor:pointer }
+    .chip:hover{ background:#e3e6ff }
+    .alert{ background:#fff8e1; border:1px solid #ffe49c; color:#7a5a00; padding:10px 12px; border-radius:10px }
   </style>
 </head>
 <body>
-  <h1>Marcação de Ponto</h1>
+  <div class="row" style="justify-content:space-between;align-items:center">
+    <h1>Marcação de Ponto</h1>
+    <div class="row">
+      <button id="btnTheme" class="chip">🌓 Tema</button>
+      <select id="langSel"><option value="pt">pt</option><option value="en">en</option></select>
+    </div>
+  </div>
 
   <div id="hello" class="muted"></div>
 
-  <!-- Bater ponto (esconde para admin) -->
-  <div id="punchCard" class="card hidden">
+  <!-- Bater ponto -->
+  <div id="punchCard" class="card hidden" aria-label="Área de marcação de ponto">
     <div class="row" style="justify-content:space-between;">
       <h3 style="margin:0">Bater ponto</h3>
       <span class="pill" id="pillType">Entrada</span>
     </div>
 
     <div class="row" style="margin-top:8px">
-      <label>Data:</label>
-      <input type="date" id="pDate" />
-      <label>Hora:</label>
-      <input type="time" id="pTime" step="60" />
+      <label for="pDate">Data:</label><input type="date" id="pDate" />
+      <label for="pTime">Hora:</label><input type="time" id="pTime" step="60" />
+      <label>Projeto:</label><select id="projSel"><option value="">(nenhum)</option></select>
     </div>
 
     <div style="margin-top:8px">
-      <label>Motivo/Observação</label>
-      <input id="note" type="text" placeholder="Opcional" />
+      <label for="note">Motivo/Observação</label>
+      <input id="note" type="text" placeholder="Opcional" aria-label="Motivo ou observação" />
+      <div class="row" style="gap:8px;margin-top:6px">
+        <span class="chip">Home office</span>
+        <span class="chip">Visita</span>
+        <span class="chip">Cliente</span>
+        <span class="chip">Reunião</span>
+      </div>
     </div>
 
-    <div class="btns-row" style="margin-top:12px">
-      <button id="btnPunch" class="primary">Registrar Entrada</button>
+    <div class="row" style="margin-top:12px">
+      <button id="btnPunch" class="primary">Registrar</button>
+      <button id="btnPauseStart">Iniciar Pausa</button>
+      <button id="btnPauseEnd">Encerrar Pausa</button>
       <button id="btnLogout" class="right">Sair</button>
     </div>
 
     <p id="status" class="muted" style="margin-top:10px"></p>
+    <div id="alertBox" class="alert hidden" role="alert"></div>
   </div>
 
-  <!-- KPIs do dia -->
+  <!-- KPIs / Banco de horas -->
   <div class="card">
-    <div class="kpi">
+    <div class="row" style="gap:16px">
       <span>Hoje: <b id="kToday">00:00</b></span>
-      <span>req: <b id="kReq">--</b></span>
-      <span>trab: <b id="kWork">--</b></span>
-      <span>fator: <b id="kFactor">1.0x</b></span>
-      <span class="right"><a href="index.html" id="adminLink" class="hidden">Painel Admin</a></span>
+      <span>Banco (mês): <span id="bankBadge" class="pill">--:--</span></span>
+      <span class="right"><a href="index.html" id="adminLink" class="muted">Painel Admin</a></span>
+    </div>
+    <p id="bankHint" class="muted" style="margin-top:6px">Créditos: 1.5× normal, 2.0× domingos/feriados. Jornada diária configurável pelo admin.</p>
+  </div>
+
+  <!-- Meus dados (LGPD) -->
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Baixar meus dados (JSON)</h3>
+    <div class="row">
+      <label>Mês:</label><input type="month" id="lgMonth" />
+      <button id="btnLGPD">Baixar</button>
     </div>
   </div>
 
@@ -80,127 +112,158 @@
   <script type="module">
     import {
       initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
-      addPunchAuto, listPunchesByDayForUser, getNextTypeFor,
-      computeDailyMs, msToHHMM, requestAdjustment
+      addPunchAuto, listPunchesByDayForUser, getNextTypeFor, getStatus,
+      computeDailyWorkMs, msToHHMM, requestAdjustment,
+      getMonthReportForUser, ensureStatus, startPause, endPause,
+      listProjects, exportUserDataJSON
     } from './app.js';
 
     await initApp();
-
     const $ = id => document.getElementById(id);
     const show = (el,v) => el.classList.toggle('hidden', !v);
+    const todayISO = (d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-    function todayLocalISO(d = new Date()){
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,'0');
-      const dd = String(d.getDate()).padStart(2,'0');
-      return `${y}-${m}-${dd}`;
-    }
+    // tema / idioma
+    const theme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    $('btnTheme').onclick = ()=>{
+      const cur = document.documentElement.getAttribute('data-theme');
+      const nxt = cur==='light'?'dark':'light';
+      document.documentElement.setAttribute('data-theme', nxt);
+      localStorage.setItem('theme', nxt);
+    };
+    $('langSel').value = localStorage.getItem('lang') || 'pt';
+    $('langSel').onchange = ()=> localStorage.setItem('lang', $('langSel').value);
+
     function nowToInputs(){
       const n = new Date();
-      $('pDate').value = todayLocalISO(n); // local (sem UTC)
+      $('pDate').value = todayISO(n);
       $('pTime').value = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+      $('lgMonth').value = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
     }
 
     async function refreshType(){
       const user = auth.currentUser; if(!user) return;
-      const dayISO = $('pDate').value || todayLocalISO();
-      const next = await getNextTypeFor(user.uid, dayISO);
-      $('pillType').textContent = (next==='entrada' ? 'Entrada' : 'Saída');
-      $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada':'Saída');
+      await ensureStatus(user.uid);
+      const next = await getNextTypeFor(user.uid);
+      $('pillType').textContent = (next==='entrada' ? 'Entrada' : next==='saida' ? 'Saída' : 'Fim Pausa');
+      $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada' : next==='saida' ? 'Saída' : 'Fim Pausa');
+
+      // controla botões de pausa conforme status
+      const st = await getStatus(user.uid);
+      show($('btnPauseStart'), st.hasOpen && !st.hasBreakOpen);
+      show($('btnPauseEnd'), st.hasOpen && st.hasBreakOpen);
     }
 
     async function refreshToday(){
       const user = auth.currentUser; if (!user) return;
-      const day = todayLocalISO();
-      const arr = await listPunchesByDayForUser(user.uid, day); // ordem asc
-
+      const arr = await listPunchesByDayForUser(user.uid, todayISO());
       const ul = $('listToday'); ul.innerHTML = '';
       if (!arr.length){
-        const li = document.createElement('li');
-        li.className = 'muted'; li.textContent = 'Nenhum registro hoje.';
-        ul.appendChild(li);
+        const li=document.createElement('li'); li.className='muted'; li.textContent='Nenhum registro hoje.'; ul.appendChild(li);
       } else {
         for (const p of arr){
           const when = p.at?.toDate ? p.at.toDate() : new Date(p.at||p.ts);
-          const li = document.createElement('li');
-          li.style.marginBottom = '8px';
-          li.textContent = `${when.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${p.type})` + (p.note ? ` — ${p.note}`:'');
-          const btns = document.createElement('div');
-          btns.className='btns-row';
-          const b1 = document.createElement('button'); b1.textContent='Pedir exclusão';
-          b1.onclick= async ()=>{
-            const reason = prompt('Explique o motivo da exclusão:')||'';
-            await requestAdjustment({ action:'delete', targetPath:p._path, type:p.type, reason });
-            alert('Pedido enviado.');
-          };
-          btns.appendChild(b1);
-          const b2 = document.createElement('button'); b2.textContent='Pedir ajuste horário';
-          b2.onclick = async ()=>{
-            const d = when.toISOString().slice(0,10);
-            const hh = String(when.getHours()).padStart(2,'0');
-            const mm = String(when.getMinutes()).padStart(2,'0');
-            const nh = prompt('Novo horário HH:MM', `${hh}:${mm}`); if(!nh) return;
-            const rs = prompt('Motivo do ajuste:')||'';
-            await requestAdjustment({ dateISO:d, timeHHMM:nh, type:p.type, reason:rs, action:'include' });
-            alert('Pedido de ajuste enviado.');
-          };
-          btns.style.marginTop='4px';
-          li.appendChild(document.createElement('br'));
-          li.appendChild(btns);
+          const li = document.createElement('li'); li.style.marginBottom='8px';
+          li.textContent = `${when.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${p.type}${p.projId? ', '+p.projId:''})` + (p.note ? ` — ${p.note}`:'');
           ul.appendChild(li);
         }
       }
-
-      $('kToday').textContent = msToHHMM(computeDailyMs(arr));
-      $('kReq').textContent = '09:00';
-      $('kWork').textContent = '08:00';
-      $('kFactor').textContent = '1.5x';
+      $('kToday').textContent = msToHHMM(computeDailyWorkMs(arr));
     }
 
-    // Ações
+    async function refreshBank(){
+      const user = auth.currentUser; if(!user) return;
+      const rep = await getMonthReportForUser(user.uid);
+      const saldo = rep.totals.finalBalanceMs;
+      const el = $('bankBadge');
+      el.textContent = (saldo>=0?'+':'') + msToHHMM(saldo);
+      el.className = 'pill ' + (saldo>=0?'positive':'negative');
+    }
+
+    async function checkAlerts(){
+      const user = auth.currentUser; if(!user) return;
+      const st = await getStatus(user.uid);
+      const box = $('alertBox');
+      if (st.hasOpen && !st.hasBreakOpen){
+        const arr = await listPunchesByDayForUser(user.uid, todayISO());
+        const last = arr[arr.length-1];
+        if (last && (last.type==='entrada' || last.type==='fim_pausa')){
+          const elapsed = Date.now() - (last.at?.toDate ? last.at.toDate().getTime() : new Date(last.at||last.ts).getTime());
+          if (elapsed > 6*3600000){
+            box.textContent = 'Você está em jornada há mais de 6 horas. Não esqueça a pausa.';
+            show(box, true); return;
+          }
+        }
+      }
+      show(box, false);
+    }
+
+    async function refreshProjects(){
+      const ps = await listProjects();
+      const sel = $('projSel'); sel.innerHTML='<option value="">(nenhum)</option>';
+      ps.forEach(p=> sel.add(new Option(p.name, p.id)));
+    }
+
+    // ações
     $('btnPunch').onclick = async ()=>{
       $('status').textContent = 'Registrando...';
       try{
-        // constrói Date local a partir de YYYY-MM-DD + HH:MM
-        const [yy,mm,dd] = ($('pDate').value || todayLocalISO()).split('-').map(Number);
+        const [yy,mm,dd] = ($('pDate').value || todayISO()).split('-').map(Number);
         const [hh,min]   = ($('pTime').value || '00:00').split(':').map(x=>parseInt(x||'0',10));
-        const d = new Date(yy, (mm||1)-1, dd||1, hh||0, min||0, 0, 0);
+        const d = new Date(yy,(mm||1)-1,dd||1,hh||0,min||0,0,0);
 
-        await addPunchAuto({ at:d, note:$('note').value||'' });
+        await addPunchAuto({ at:d, note:$('note').value||'', projId: $('projSel').value || null });
         $('status').textContent='Ponto registrado!';
         $('note').value='';
-        await refreshType();
-        await refreshToday();
+        await refreshType(); await refreshToday(); await refreshBank(); await checkAlerts();
       }catch(e){
         $('status').textContent='Erro: ' + (e?.message||e);
       }
     };
+    $('btnPauseStart').onclick = async ()=>{
+      try{ await startPause({}); await refreshType(); await refreshToday(); await checkAlerts(); }catch(e){ alert('Erro: '+(e?.message||e)); }
+    };
+    $('btnPauseEnd').onclick = async ()=>{
+      try{ await endPause({}); await refreshType(); await refreshToday(); await checkAlerts(); }catch(e){ alert('Erro: '+(e?.message||e)); }
+    };
+    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.reload(); };
 
-    $('btnLogout').onclick = async ()=>{
-      const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-      await m.signOut(auth); location.reload();
+    // chips
+    document.addEventListener('click', (ev)=>{ if (ev.target.classList.contains('chip')){ $('note').value = ($('note').value? $('note').value+'; ':'') + ev.target.textContent; } });
+
+    // LGPD download
+    $('btnLGPD').onclick = async ()=>{
+      const user=auth.currentUser; if(!user) return;
+      const m=$('lgMonth').value; const from=`${m}-01`, to=`${m}-31`;
+      const data = await exportUserDataJSON(user.uid, from, to);
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=`meus_dados_${m}.json`; a.click();
+      URL.revokeObjectURL(url);
     };
 
     // login state
     onUserChanged(async (user)=>{
-      if (!user){
-        location.href = './'; // página de login
-        return;
-      }
+      if (!user){ location.href = './'; return; }
       $('hello').textContent = `Olá, ${user.displayName||user.email||''}`;
       await ensureRoleDoc(user.uid, user.displayName||'', user.email||'');
-
+      await ensureStatus(user.uid);
       nowToInputs();
+      await refreshProjects();
       await refreshType();
       await refreshToday();
+      await refreshBank();
+      await checkAlerts();
 
       const admin = await isAdmin(user.uid);
-      // link correto para o painel admin (index.html)
-      $('adminLink').setAttribute('href','index.html');
-      show($('adminLink'), admin);
-      // Admin não vê área de batida
-      show($('punchCard'), !admin);
+      document.getElementById('adminLink').classList.toggle('hidden', !admin);
+      document.getElementById('punchCard').classList.toggle('hidden', !!admin);
     });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    }
   </script>
 </body>
 </html>
