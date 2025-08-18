@@ -1,0 +1,9 @@
+{
+  "admin.title": "Painel do Administrador",
+  "user.title": "Marcação de Ponto",
+  "btn.load": "Carregar",
+  "btn.logout": "Sair",
+  "btn.generate": "Gerar",
+  "btn.csv": "CSV",
+  "btn.xlsx": "XLSX"
+}
