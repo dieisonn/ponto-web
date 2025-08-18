@@ -1,11 +1,11 @@
 // app.js — Ponto completo com: escalas, pausas nomeadas, projetos, compensações,
-// relatório com heatmap/timeline helpers, LGPD export, PWA hooks, i18n básico,
-// App Check, auditoria, gestor/departamentos, trava de período (balances.locked).
+// relatório (heatmap/timeline helpers), LGPD export, PWA hooks, App Check, auditoria,
+// gestor/departamentos e trava de período (balances.locked).
 
 export let app, auth, db;
 let boot;
 
-const APP_CHECK_SITE_KEY = "<SEU_RECAPTCHA_V3_SITE_KEY>"; // <<< preencha aqui (Firebase App Check)
+const APP_CHECK_SITE_KEY = "<SEU_RECAPTCHA_V3_SITE_KEY>"; // opcional: App Check
 
 export async function initApp(){
   if (boot) return boot;
@@ -24,7 +24,7 @@ export async function initApp(){
 
     app = appModule.initializeApp(cfg);
 
-    // App Check (se chave preenchida)
+    // App Check (se chave fornecida)
     try {
       if (APP_CHECK_SITE_KEY && APP_CHECK_SITE_KEY !== "<SEU_RECAPTCHA_V3_SITE_KEY>") {
         const appCheckModule = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js');
@@ -56,7 +56,10 @@ export function msToHHMM(ms){
   const s=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   return sign<0?`-${s}`:s;
 }
-function hhmmToMin(s){ const [h,m]=String(s||'0:0').split(':').map(x=>parseInt(x||'0',10)); return (isNaN(h)?0:h)*60+(isNaN(m)?0:m;) }
+function hhmmToMin(s){
+  const [h, m] = String(s || '0:0').split(':').map(x => parseInt(x || '0', 10));
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+}
 const ROUND5 = 5*60*1000;
 
 /* ===== Auth / perfis ===== */
@@ -71,7 +74,7 @@ export async function isAdmin(uid){ await initApp(); const fs=await import('http
 export async function listAllProfiles(){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); const s=await fs.getDocs(fs.collection(db,'roles')); return s.docs.map(d=>({ uid:d.id, ...(d.data()||{}) })); }
 export async function setRequiredDaily(uid, hhmm){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); await fs.setDoc(fs.doc(db,'roles',uid),{requiredDaily:hhmm},{merge:true}); }
 
-/* ===== Status de jornada (work/pause) ===== */
+/* ===== Status de jornada ===== */
 export async function ensureStatus(uid){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const ref=fs.doc(db,`users/${uid}/meta/status`); const s=await fs.getDoc(ref);
@@ -132,7 +135,7 @@ export async function listCompensationsInMonth(uid, monthISOParam){
   return s.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
 }
 
-/* ===== Entrada/Saída/Pausa (batch + auditoria + dupla escrita) ===== */
+/* ===== Escrita das batidas (dupla escrita + status + auditoria) ===== */
 async function writePunch({ uid, type, atDate, note, projId }){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const dayISO = dayISOfromDate(atDate); const period = yyyymmLocal(parseLocalDateISO(dayISO));
@@ -173,12 +176,11 @@ async function writePunch({ uid, type, atDate, note, projId }){
 
 export async function addPunchAuto({ at, note='', projId=null }){
   await initApp();
-  const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const user = auth.currentUser; if(!user) throw new Error('Não autenticado');
   const atDate = at instanceof Date ? at : new Date();
   await ensureStatus(user.uid);
   const st = await getStatus(user.uid);
-  const type = (!st.hasOpen) ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida'); // mantém alternância simples
+  const type = (!st.hasOpen) ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida');
   await writePunch({ uid:user.uid, type, atDate, note, projId });
 }
 export async function startPause({ at, note='' }){
@@ -190,7 +192,6 @@ export async function endPause({ at, note='' }){
   await writePunch({ uid:user.uid, type:'fim_pausa', atDate: at instanceof Date ? at : new Date(), note });
 }
 export async function addExplicit({ at, type, note='', uid, projId=null }){
-  // utilitário p/ admin inserir tipos específicos
   await writePunch({ uid, type, atDate: at instanceof Date ? at : new Date(), note, projId });
 }
 
@@ -240,7 +241,7 @@ export async function listOpenShiftsAllUsers(dayISO){
     if(st.exists() && st.data()?.hasOpen){
       const arr=await listPunchesByDayForUser(r.uid, dayISO);
       const last=arr[arr.length-1];
-      if(last?.type==='entrada' || last?.type==='fim_pausa'){ // último marco que inicia trabalho
+      if(last && (last.type==='entrada' || last.type==='fim_pausa')){
         const since=millisOf(last.at||last.ts); out.push({ uid:r.uid, name:r.name||r.uid, since, elapsedMs:Math.max(0,now-since) });
       }
     }
@@ -249,7 +250,7 @@ export async function listOpenShiftsAllUsers(dayISO){
   return out;
 }
 
-/* ===== Ajustes ===== (mesmos da versão anterior, com auditoria) */
+/* ===== Ajustes ===== */
 export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const user=auth.currentUser; if(!user) throw new Error('Não autenticado');
@@ -316,7 +317,7 @@ function isSundayOrHoliday(dayISO, holidays){
   const d=parseLocalDateISO(dayISO); return d.getDay()===0 || holidays.has(dayISO);
 }
 
-/* ===== Cálculos de jornada com pausas nomeadas ===== */
+/* ===== Cálculos ===== */
 export function computeDailyWorkMs(punchesAsc){
   const arr=punchesAsc.slice().sort((a,b)=> millisOf(a.at||a.ts) - millisOf(b.at||b.ts));
   let work=0, workStart=null, pauseStart=null;
@@ -335,7 +336,6 @@ export function computeDailyWorkMs(punchesAsc){
 }
 function computeDailyAdjustedMs(punchesAsc){
   const worked = computeDailyWorkMs(punchesAsc);
-  // penalidade só quando NÃO existem pausas nomeadas e for bloco único >6h
   const hasNamedPause = punchesAsc.some(p=>p.type==='inicio_pausa' || p.type==='fim_pausa');
   if (!hasNamedPause){
     const types = punchesAsc.map(p=>p.type);
@@ -371,7 +371,6 @@ export async function getMonthReportForUser(uid, monthISOParam, reqDailyMinParam
   const scheduleMap = await getScheduleMonth(uid, monthISOv);
   const comps = await listCompensationsInMonth(uid, monthISOv);
 
-  // batidas deste mês (novo caminho)
   const cg = await fs.getDocs(fs.query(fs.collectionGroup(db,'punches'),
     fs.where('uid','==',uid),
     fs.where('day','>=', `${monthISOv}-01`),
@@ -380,7 +379,6 @@ export async function getMonthReportForUser(uid, monthISOParam, reqDailyMinParam
   const byDay = new Map();
   cg.forEach(d=>{ const x=d.data(); if(!byDay.has(x.day)) byDay.set(x.day,[]); byDay.get(x.day).push(x); });
 
-  // legado fallback
   if(byDay.size===0){
     const snap=await fs.getDocs(fs.collection(db,'punches',uid,periodStr));
     snap.forEach(d=>{ const x=d.data(); if(!byDay.has(x.day)) byDay.set(x.day,[]); byDay.get(x.day).push(x); });
@@ -396,14 +394,11 @@ export async function getMonthReportForUser(uid, monthISOParam, reqDailyMinParam
     totalWorked += worked; totalReq += required;
 
     let extra=0, debt=0, compMs=0;
-    if (worked >= required){ extra = worked - required; }
-    else { debt = required - worked; }
+    if (worked >= required){ extra = worked - required; } else { debt = required - worked; }
 
-    // compensações no dia (descontam créditos)
     const comp = comps.find(c=>c.date===dayISOv);
     if (comp){ const [h,m] = String(comp.hours||'0:0').split(':').map(Number); compMs = (h*60+m)*60*1000; extra = Math.max(0, extra - compMs); }
 
-    // aplicação de fator (150% normal, 200% dom/feriado) apenas sobre "extra" pós-compensação
     if (extra>0){
       const factor = isSundayOrHoliday(dayISOv, holidays) ? 2.0 : 1.5;
       creditMs += Math.round(extra * factor);
@@ -458,7 +453,7 @@ export async function exportUserDataJSON(uid, fromISO, toISO){
   const q=fs.query(fs.collectionGroup(db,'punches'), fs.where('uid','==',uid), fs.where('day','>=', fromISO), fs.where('day','<=', toISO));
   const s=await fs.getDocs(q); const punches=s.docs.map(d=>d.data());
   const adjQ=fs.query(fs.collection(db,'adjust_requests'), fs.where('uid','==',uid));
-  const adjS=await fs.getDocs(adjQ); const adjustments=adjS.docs.map(d=>({ id:d.id, ...(d.data()||{}) })).filter(a=> a.createdAt && (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) );
+  const adjS=await fs.getDocs(adjQ); const adjustments=adjS.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
   const compsQ=fs.query(fs.collection(db,'compensations', uid), fs.where('date','>=',fromISO), fs.where('date','<=',toISO));
   const compsS=await fs.getDocs(compsQ); const compensations=compsS.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
   return { uid, range:{ fromISO, toISO }, punches, adjustments, compensations, generatedAt: new Date().toISOString() };
@@ -466,7 +461,6 @@ export async function exportUserDataJSON(uid, fromISO, toISO){
 
 /* ===== UI helpers: Heatmap & Timeline (dados) ===== */
 export function buildHeatmapGrid(reps){
-  // retorna matriz [ { uid, name, days: [{dayISO, status: 'ok'|'late'|'abs'}] } ]
   const byUser = [];
   for(const r of reps){
     const map=new Map(r.daily.map(d=>[d.dayISO, d]));
@@ -482,7 +476,6 @@ export function buildHeatmapGrid(reps){
   return byUser;
 }
 export function buildTimeline(dayArr){
-  // retorna blocos [{startMs,endMs,type}] a partir dos eventos do dia
   const arr=dayArr.slice().sort((a,b)=> millisOf(a.at||a.ts)-millisOf(b.at||b.ts));
   const blocks=[]; let curStart=null, pauseStart=null;
   for(const p of arr){
@@ -500,4 +493,3 @@ export async function getNextTypeFor(uid){
   const st = await getStatus(uid);
   return !st.hasOpen ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida');
 }
-
