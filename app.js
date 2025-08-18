@@ -1,5 +1,5 @@
 // app.js — Firebase + Ponto (sem geolocalização) + consultas dia/mês + ajustes
-// Versão: consultas sem orderBy no Firestore (ordenamos em memória) -> não precisa de índice composto.
+// Versão corrigida: usa datas **locais** (sem UTC) para day/period e alternância Entrada↔Saída.
 
 export let app, auth, db;
 let boot;
@@ -51,16 +51,19 @@ export async function isAdmin(uid){
   return s.exists() && s.data()?.role === 'admin';
 }
 
-function yyyymm(d){
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth()+1).padStart(2,'0');
-  return `${y}${m}`;
-}
+// ===== datas locais (correção) =====
 function dayISOfromDate(d){
   const y=d.getFullYear();
   const m=String(d.getMonth()+1).padStart(2,'0');
   const dd=String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
+}
+function parseLocalDateISO(dayISO){ // 'YYYY-MM-DD' -> Date local 00:00
+  const [y,m,d] = String(dayISO).split('-').map(Number);
+  return new Date(y, (m||1)-1, d||1, 0,0,0,0);
+}
+function yyyymmLocal(d){ // período com base na data local
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}`;
 }
 function millisOf(x){
   if (!x) return 0;
@@ -73,8 +76,8 @@ function millisOf(x){
 export async function getNextTypeFor(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const d = new Date(dayISO);
-  const period = yyyymm(d);
+  const d = parseLocalDateISO(dayISO);
+  const period = yyyymmLocal(d);
 
   // Apenas where(day==) — sem orderBy (evita índice) => ordenamos no cliente
   const q = fs.query(
@@ -99,14 +102,15 @@ export async function addPunchAuto({ at, note='' }){
 
   const atDate = at instanceof Date ? new Date(at) : new Date();
   const dayISO = dayISOfromDate(atDate);
-  const period = yyyymm(atDate);
+  const dLocal = parseLocalDateISO(dayISO);
+  const period = yyyymmLocal(dLocal);
   const nextType = await getNextTypeFor(user.uid, dayISO); // alternância garantida
 
   const ref = fs.doc(fs.collection(db, 'punches', user.uid, period));
   await fs.setDoc(ref, {
     ts: fs.Timestamp.now(),                  // servidor
-    at: fs.Timestamp.fromDate(atDate),       // horário do cliente
-    day: dayISO,                             // chave de consulta do dia
+    at: fs.Timestamp.fromDate(atDate),       // horário do cliente (local → UTC pelo client)
+    day: dayISO,                             // chave de consulta do dia (local)
     email: user.email || '',
     uid: user.uid,
     type: nextType,
@@ -118,10 +122,8 @@ export async function addPunchAuto({ at, note='' }){
 export async function listPunchesByDayForUser(uid, dayISO){
   await initApp();
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const d = new Date(dayISO);
-  const period = yyyymm(d);
+  const period = yyyymmLocal(parseLocalDateISO(dayISO));
 
-  // Apenas where(day==) — sem orderBy (evita índice)
   const q = fs.query(
     fs.collection(db,'punches',uid,period),
     fs.where('day','==', dayISO)
@@ -155,7 +157,7 @@ export async function listPunchesByDayAllUsers(dayISO){
 
   const rolesSnap = await fs.getDocs(fs.collection(db,'roles'));
   const list = [];
-  const period = yyyymm(new Date(dayISO));
+  const period = yyyymmLocal(parseLocalDateISO(dayISO));
 
   for (const r of rolesSnap.docs){
     const uid = r.id;
@@ -189,7 +191,7 @@ export async function requestAdjustment({ dateISO, timeHHMM, type, reason, actio
   let tsWanted = null;
   if (!action || action==='include'){
     const [hh,mm] = (timeHHMM||'00:00').split(':').map(x=>parseInt(x||'0',10));
-    const d = new Date(dateISO); d.setHours(hh,mm,0,0);
+    const d = parseLocalDateISO(dateISO); d.setHours(hh,mm,0,0);
     tsWanted = fs.Timestamp.fromDate(d);
   }
 
@@ -210,7 +212,7 @@ export async function listPendingAdjustments(){
   const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const q = fs.query(fs.collection(db,'adjust_requests'),
                      fs.where('status','==','pending'),
-                     fs.orderBy('createdAt','asc')); // essa ordenação é na mesma coleção e costuma ter índice automático
+                     fs.orderBy('createdAt','asc')); // mesma coleção → índice automático costuma bastar
   const s = await fs.getDocs(q);
   return s.docs.map(d=>({ id:d.id, ...d.data() }));
 }
@@ -223,7 +225,7 @@ export async function approveAdjustment(req, adminUid){
     await fs.deleteDoc(fs.doc(db, req.targetPath));
   } else {
     const d = req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
-    const period = yyyymm(d);
+    const period = yyyymmLocal(d);
     await fs.setDoc(fs.doc(fs.collection(db,'punches', req.uid, period)), {
       ts: fs.Timestamp.now(),
       at: req.tsWanted,
