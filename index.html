@@ -144,7 +144,7 @@
       <p class="muted" style="margin-top:6px">* 1.5× normal, 2.0× domingos/feriados. Pausas nomeadas não sofrem penalidade.</p>
     </div>
 
-    <!-- Heatmap de presença (sem lib) -->
+    <!-- Heatmap -->
     <div class="card">
       <h3 style="margin:0 0 8px 0">Heatmap de presença (semana atual)</h3>
       <div id="heat" class="grid"></div>
@@ -310,7 +310,6 @@
       lastCSV = 'data:text/csv;charset=utf-8,' + encodeURIComponent(core.monthReportsToCSV(reps));
       lastAOA = core.monthReportsToAOA(reps);
 
-      // Heatmap (semana atual das 7 últimas datas presentes nos reps)
       renderHeatmap(reps);
     }
     $('btnMonth').onclick = loadMonth;
@@ -328,14 +327,13 @@
     $('btnSaveDaily').onclick = async ()=>{ const uid=$('userCfg').value; if(!uid) return; await setRequiredDaily(uid, $('userDaily').value||'08:00'); alert('Jornada diária salva!'); };
 
     // Escalas
-    let schCache = new Map();
     $('btnLoadSch').onclick = async ()=>{
       const uid=$('schUser').value, m=$('schMonth').value;
-      const map = await getScheduleMonth(uid, m); schCache=map;
+      const map = await getScheduleMonth(uid, m);
       renderSchTable(uid, m, map);
     };
     $('btnSaveSch').onclick = async ()=>{
-      const uid=$('schUser').value, m=$('schMonth').value;
+      const uid=$('schUser').value;
       const rows=[...document.querySelectorAll('#tbodySch tr')];
       for(const tr of rows){
         const day = tr.dataset.day;
@@ -359,19 +357,16 @@
       }
     }
 
-    // Heatmap (cores por status)
+    // Heatmap
     function renderHeatmap(reps){
       const wrap=$('heat'); wrap.innerHTML='';
       if(!reps.length){ wrap.textContent='Sem dados.'; return; }
       const grid = core.buildHeatmapGrid(reps);
-      // coletar últimos 7 dias presentes
       const allDays = new Set(); grid.forEach(u=>u.days.forEach(d=>allDays.add(d.dayISO)));
       const sortedDays = [...allDays].sort().slice(-7);
-      // header
       const head=document.createElement('div'); head.className='heat';
       head.innerHTML = `<div><b>Colaborador</b></div>` + sortedDays.map(d=>`<div class="muted" style="font-size:12px">${d.slice(5)}</div>`).join('');
       wrap.appendChild(head);
-      // rows
       grid.forEach(u=>{
         const row=document.createElement('div'); row.className='heat';
         row.innerHTML = `<div>${u.name}</div>` + sortedDays.map(d=>{
@@ -390,7 +385,6 @@
       const blocks=core.buildTimeline(arr);
       const wrap=$('tlWrap'); wrap.innerHTML='';
       if(!blocks.length){ wrap.innerHTML='<span class="muted">Sem blocos de trabalho.</span>'; return; }
-      // barra 24h
       const total=24*60*60*1000;
       const d=new Date(day);
       const base=+new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0);
@@ -412,14 +406,14 @@
       $('gate').textContent = ok ? 'Admin OK' : 'Sem permissão';
       show($('adminArea'), ok);
       if (ok){
-        await hydrateProfiles();
+        const profilesLoaded = hydrateProfiles();
         await refreshProjects();
         await loadDaily();
         await loadMonth();
+        await profilesLoaded;
       }
     });
 
-    // Botões topo
     $('btnLoad').onclick = loadDaily;
     $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='admin.html'; };
   </script>
