@@ -9,7 +9,8 @@ const CORE = [
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
-  './favicon.ico'
+  './favicon.ico',
+  './google.svg'
 ];
 
 self.addEventListener('install', (e)=>{
@@ -26,9 +27,9 @@ self.addEventListener('fetch', (e)=>{
   const { request } = e;
   if (request.method !== 'GET') return;
   e.respondWith(
-    caches.match(request).then(r => 
+    caches.match(request).then(r =>
       r || fetch(request).then(res=>{
-        const resClone = res.clone();
+        const resClone=res.clone();
         caches.open(CACHE).then(c=>c.put(request, resClone)).catch(()=>{});
         return res;
       }).catch(()=> r)
