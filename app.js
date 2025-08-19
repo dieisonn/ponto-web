@@ -2,17 +2,16 @@
 // - login/roles
 // - marcações com espelho (users/*/punches e punches/{uid}/{period})
 // - status de jornada/pausa
-// - projetos
-// - escalas
-// - compensações
-// - relatório mensal + banco de horas (1.5× normal; 2.0× domingo/feriado)
+// - projetos / escalas / compensações
+// - ajustes (request/approve/reject)
+// - relatórios mensais + banco de horas (1.5× normal; 2.0× domingo/feriado)
 // - export LGPD
 // - utilitários de UI
 
 export let app, auth, db;
 let boot;
 
-const APP_CHECK_SITE_KEY = "<SEU_RECAPTCHA_V3_SITE_KEY>"; // opcional
+const APP_CHECK_SITE_KEY = "<SEU_RECAPTCHA_V3_SITE_KEY>"; // opcional (ReCaptcha v3)
 
 export async function initApp(){
   if (boot) return boot;
@@ -31,7 +30,6 @@ export async function initApp(){
 
     app = appModule.initializeApp(cfg);
 
-    // App Check (se houver chave)
     try {
       if (APP_CHECK_SITE_KEY && APP_CHECK_SITE_KEY !== "<SEU_RECAPTCHA_V3_SITE_KEY>") {
         const appCheckModule = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js');
@@ -40,7 +38,7 @@ export async function initApp(){
           isTokenAutoRefreshEnabled: true
         });
       }
-    } catch(e){ console.warn('AppCheck: prosseguindo sem.', e); }
+    } catch(e){ console.warn('AppCheck desabilitado:', e?.message||e); }
 
     auth = authModule.getAuth(app);
     db   = fsModule.getFirestore(app);
@@ -146,6 +144,7 @@ async function writePunch({ uid, type, atDate, note, projId }){
   const batch = fs.writeBatch(db);
   batch.set(fs.doc(fs.collection(db,`users/${uid}/punches`)), data);
   batch.set(fs.doc(fs.collection(db,'punches',uid,period)), data);
+
   const stRef = fs.doc(db,`users/${uid}/meta/status`);
   const stSnap = await fs.getDoc(stRef);
   const st = { hasOpen:false, hasBreakOpen:false, ...(stSnap.data()||{}) };
@@ -157,7 +156,6 @@ async function writePunch({ uid, type, atDate, note, projId }){
 
   batch.set(stRef, st, { merge:true });
 
-  // log de auditoria
   batch.set(fs.doc(fs.collection(db,'audit')), {
     actorUid: uid, action: `punch:${type}`, day: dayISO, at: data.at, createdAt: fs.Timestamp.now(), meta: { projId: projId||null }
   });
@@ -237,6 +235,70 @@ export async function listOpenShiftsAllUsers(dayISO){
   }
   out.sort((a,b)=> b.elapsedMs - a.elapsedMs);
   return out;
+}
+
+/* ===== AJUSTES ===== */
+export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }){
+  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  const user=auth.currentUser; if(!user) throw new Error('Não autenticado');
+
+  let tsWanted=null;
+  if(!action || action==='include'){
+    const [hh,mm]=(timeHHMM||'00:00').split(':').map(x=>parseInt(x||'0',10));
+    const d=parseLocalDateISO(dateISO); d.setHours(hh,mm,0,0);
+    tsWanted=fs.Timestamp.fromDate(d);
+  }
+
+  const ref=await fs.addDoc(fs.collection(db,'adjust_requests'), {
+    uid:user.uid, email:user.email||'', type:type||null, reason:reason||'',
+    action:action||'include', targetPath:targetPath||null, tsWanted:tsWanted,
+    status:'pending', createdAt:fs.Timestamp.now()
+  });
+  await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:user.uid, action:'adjust:create', targetId:ref.id, createdAt:fs.Timestamp.now() });
+}
+export async function listPendingAdjustments(){
+  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  const q=fs.query(fs.collection(db,'adjust_requests'), fs.where('status','==','pending'), fs.orderBy('createdAt','asc'));
+  const s=await fs.getDocs(q); return s.docs.map(d=>({ id:d.id, ...d.data() }));
+}
+export async function approveAdjustment(req, adminUid){
+  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+
+  if (req.action==='delete' && req.targetPath){
+    const docRef = fs.doc(db, req.targetPath);
+    const snap=await fs.getDoc(docRef);
+    const data = snap.exists()? snap.data(): null;
+    if (snap.exists()) await fs.deleteDoc(docRef);
+
+    if (data){
+      const atMs = millisOf(data.at||data.ts);
+      if (req.targetPath.startsWith('users/')) {
+        const period = yyyymmLocal(parseLocalDateISO(data.day));
+        const q = fs.query(fs.collection(db,'punches',data.uid,period), fs.where('day','==',data.day));
+        const s = await fs.getDocs(q);
+        for(const d of s.docs){ const x=d.data(); if (x.type===data.type && millisOf(x.at||x.ts)===atMs) await fs.deleteDoc(d.ref); }
+      } else if (req.targetPath.startsWith('punches/')) {
+        const q = fs.query(fs.collectionGroup(db,'punches'), fs.where('uid','==',data.uid), fs.where('day','==',data.day));
+        const s = await fs.getDocs(q);
+        for(const d of s.docs){ const x=d.data(); if (x.type===data.type && millisOf(x.at||x.ts)===atMs) await fs.deleteDoc(d.ref); }
+      }
+    }
+  } else {
+    const d = req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
+    const dayISO = dayISOfromDate(d);
+    const period = yyyymmLocal(parseLocalDateISO(dayISO));
+    const data = { ts: fs.Timestamp.now(), at: req.tsWanted, day: dayISO, period, email: req.email || '', uid: req.uid, type: req.type || 'entrada', note: 'Ajuste aprovado (admin)' };
+    await fs.setDoc(fs.doc(fs.collection(db,`users/${req.uid}/punches`)), data);
+    await fs.setDoc(fs.doc(fs.collection(db,'punches',req.uid,period)), data);
+  }
+
+  await fs.updateDoc(fs.doc(db,'adjust_requests',req.id), { status:'approved', resolvedAt:fs.Timestamp.now(), resolvedBy:adminUid });
+  await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:adminUid, action:'adjust:approve', targetId:req.id, createdAt:fs.Timestamp.now() });
+}
+export async function rejectAdjustment(reqId, adminUid, reason){
+  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  await fs.updateDoc(fs.doc(db,'adjust_requests',reqId),{ status:'rejected', resolvedAt:fs.Timestamp.now(), resolvedBy:adminUid, adminNote:reason||'' });
+  await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:adminUid, action:'adjust:reject', targetId:reqId, createdAt:fs.Timestamp.now(), meta:{reason:reason||''} });
 }
 
 /* ===== Feriados ===== */
@@ -382,7 +444,7 @@ export function monthReportsToAOA(reps){
 /* ===== LGPD ===== */
 export async function exportUserDataJSON(uid, fromISO, toISO){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const q=fs.query(fs.collectionGroup(db,'punches'), fs.where('uid','==',uid), fs.where('day','>=', fromISO), fs.where('day','<=', toISO));
+  const q=fs.query(fs.collectionGroup(db,'punches'), fs.where('uid','==',uid), fs.where('day','>=', fromISO), fs.where('day','<=',toISO));
   const s=await fs.getDocs(q); const punches=s.docs.map(d=>d.data());
   const adjQ=fs.query(fs.collection(db,'adjust_requests'), fs.where('uid','==',uid));
   const adjS=await fs.getDocs(adjQ); const adjustments=adjS.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
