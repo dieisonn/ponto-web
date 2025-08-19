@@ -8,33 +8,25 @@
   <meta name="theme-color" content="#4b4bd6">
   <link rel="icon" href="favicon.ico">
   <style>
-    :root{
-      --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --bd:#e6e8ef; --bg:#f6f7fb; --card:#fff;
-      --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
-    }
+    :root{ --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --bd:#e6e8ef; --bg:#f6f7fb; --card:#fff; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444; }
     [data-theme="dark"]{ --bg:#0f1220; --ink:#eef2ff; --mut:#9aa3b2; --card:#12162a; --bd:#242b45; }
     *{box-sizing:border-box}
-    body{margin:0; background:var(--bg); color:var(--ink);
-         font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
+    body{margin:0; background:var(--bg); color:var(--ink); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
     .wrap{max-width:980px; margin:26px auto; padding:0 14px;}
-    h1{margin:0 0 18px; font-size:34px; letter-spacing:.2px}
+    h1{margin:0 0 18px; font-size:34px}
     a{color:var(--brand); text-decoration:none}
     .card{background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; margin:12px 0;}
     .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
     input,select,button{font-size:15px}
-    input[type=date],input[type=time],input[type=month],input[type=text],select{
-      border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:transparent; color:inherit;
-    }
+    input[type=date],input[type=time],input[type=month],input[type=text],select{ border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:transparent; color:inherit; }
     button{padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer}
     [data-theme="dark"] button{background:#141a33}
     button.primary{background:var(--brand); color:#fff; border-color:var(--brand)}
-    .muted{color:var(--mut)}
-    .hidden{display:none}
-    .pill{display:inline-block; background:rgba(75,75,214,.12); color:#dfe1ff; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700}
+    .muted{color:var(--mut)} .hidden{display:none}
     .kpi{display:flex; gap:16px; align-items:center; flex-wrap:wrap; font-size:14px}
     .kpi span{background:rgba(127,138,255,.08); border:1px solid var(--bd); padding:6px 10px; border-radius:999px}
+    .pill{display:inline-block; background:rgba(75,75,214,.12); color:#dfe1ff; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700}
     .right{margin-left:auto}
-    .tag{display:inline-block; padding:2px 6px; border-radius:999px; font-size:12px; border:1px solid var(--bd)}
   </style>
 </head>
 <body>
@@ -42,8 +34,8 @@
     <div class="row" style="justify-content:space-between; align-items:flex-start">
       <h1>Marcação de Ponto</h1>
       <div class="row">
-        <button id="btnTheme" class="tag">🌓 Tema</button>
-        <select id="locale" class="tag"><option>pt</option><option>en</option><option>es</option></select>
+        <button id="btnTheme" class="pill">🌓 Tema</button>
+        <select id="locale" class="pill"><option>pt</option><option>en</option><option>es</option></select>
       </div>
     </div>
 
@@ -53,8 +45,8 @@
       <div class="kpi">
         <span>Hoje: <b id="kToday">00:00</b></span>
         <span>Banco (mês): <b id="kBankMonth">--:--</b></span>
-        <span class="muted">Créditos: 1.5× normal, 2.0× domingos/feriados. Jornada diária configurável pelo admin.</span>
-        <a href="index.html" id="adminLink" class="right hidden">Painel Admin</a>
+        <span class="muted">Créditos: 1.5× normal, 2.0× domingos/feriados.</span>
+        <a href="admin.html" id="adminLink" class="right hidden">Painel Admin</a>
       </div>
     </div>
 
@@ -74,18 +66,17 @@
       </div>
       <div class="row" style="margin-top:12px">
         <button id="btnPunch" class="primary">Registrar</button>
-        <button id="btnPause"  title="Início/Fim de pausa">Pausa</button>
+        <button id="btnPause" title="Início/Fim de pausa">Pausa</button>
         <button id="btnLogout" class="right">Sair</button>
       </div>
       <p id="status" class="muted" style="margin-top:10px"></p>
     </div>
 
-    <!-- Export meus dados -->
+    <!-- Baixar dados -->
     <div class="card">
       <h3 style="margin:6px 0 10px">Baixar meus dados (JSON)</h3>
       <div class="row">
-        <label>Mês:</label>
-        <input type="month" id="mExport"/>
+        <label>Mês:</label><input type="month" id="mExport"/>
         <button id="btnExport">Baixar</button>
       </div>
     </div>
@@ -98,145 +89,96 @@
   </div>
 
 <script type="module">
+  // Guard: precisa estar logado (colaborador ou admin)
   import {
     initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
     addPunchAuto, startPause, endPause,
     listPunchesByDayForUser, getNextTypeFor,
     computeDailyWorkMs, msToHHMM, requestAdjustment,
-    getMonthReportForUser, getStatus
+    getMonthReportForUser, getStatus, exportUserDataJSON
   } from './app.js';
-
   await initApp();
+  const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+  mAuth.onAuthStateChanged(auth,(u)=>{ if(!u) location.replace('login.html'); });
 
-  const $ = id => document.getElementById(id);
-  const show = (el,v)=> el.classList.toggle('hidden', !v);
-  const fmt = (d)=> d.toLocaleString(($('locale').value||'pt')+'-BR',
-                        {hour:'2-digit',minute:'2-digit'});
+  const $=id=>document.getElementById(id);
+  const show=(el,v)=>el.classList.toggle('hidden',!v);
+  const fmt=(d)=>d.toLocaleString(($('locale').value||'pt')+'-BR',{hour:'2-digit',minute:'2-digit'});
+  const root=document.documentElement;
+  $('btnTheme').onclick=()=> root.setAttribute('data-theme', root.getAttribute('data-theme')==='dark'?'light':'dark');
 
-  // Tema
-  const root = document.documentElement;
-  $('btnTheme').onclick = ()=> {
-    root.setAttribute('data-theme', root.getAttribute('data-theme')==='dark'?'light':'dark');
-  };
-
-  function nowToInputs(){
-    const n=new Date();
-    $('pDate').value = n.toISOString().slice(0,10);
-    $('pTime').value = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
-  }
-
+  function nowToInputs(){ const n=new Date(); $('pDate').value=n.toISOString().slice(0,10); $('pTime').value=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; }
   async function refreshType(){
-    const user = auth.currentUser; if(!user) return;
-    const next = await getNextTypeFor(user.uid);
-    $('pillType').textContent = (next==='entrada' ? 'Entrada' : (next==='saida'?'Saída':'Fim de pausa'));
-    $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada' : (next==='saida'?'Saída':'Fim de pausa'));
+    const u=auth.currentUser; if(!u) return;
+    const next=await getNextTypeFor(u.uid);
+    $('pillType').textContent=(next==='entrada'?'Entrada':(next==='saida'?'Saída':'Fim de pausa'));
+    $('btnPunch').textContent='Registrar '+(next==='entrada'?'Entrada':(next==='saida'?'Saída':'Fim de pausa'));
   }
-
   async function refreshBankWidget(){
     const u=auth.currentUser; if(!u) return;
-    const m = new Date().toISOString().slice(0,7);
-    const rep = await getMonthReportForUser(u.uid, m);
-    $('kBankMonth').textContent = msToHHMM(rep.totals.balanceMs);
+    const m=new Date().toISOString().slice(0,7);
+    const rep=await getMonthReportForUser(u.uid,m);
+    $('kBankMonth').textContent=msToHHMM(rep.totals.balanceMs);
   }
-
   async function refreshToday(){
     const u=auth.currentUser; if(!u) return;
-    const day = new Date().toISOString().slice(0,10);
-    const arr = await listPunchesByDayForUser(u.uid, day);
-
-    // lista
+    const day=new Date().toISOString().slice(0,10);
+    const arr=await listPunchesByDayForUser(u.uid,day);
     const ul=$('listToday'); ul.innerHTML='';
     if(!arr.length){
       const li=document.createElement('li'); li.className='muted'; li.textContent='Nenhum registro hoje.'; ul.appendChild(li);
     }else{
       for(const p of arr){
-        const when = p.at?.toDate ? p.at.toDate() : new Date(p.at||p.ts);
-        const li=document.createElement('li');
-        li.style.marginBottom='10px';
-        li.textContent = `${fmt(when)} (${p.type})` + (p.note?` — ${p.note}`:'');
-        // Ações de ajuste
+        const when=p.at?.toDate? p.at.toDate(): new Date(p.at||p.ts);
+        const li=document.createElement('li'); li.style.marginBottom='10px';
+        li.textContent=`${fmt(when)} (${p.type})`+(p.note?` — ${p.note}`:'');
         const btns=document.createElement('div'); btns.className='row'; btns.style.marginTop='6px';
         const b1=document.createElement('button'); b1.textContent='Pedir exclusão';
-        b1.onclick = async ()=>{
-          const reason = prompt('Explique o motivo da exclusão:')||'';
-          await requestAdjustment({ action:'delete', targetPath:p._path, type:p.type, reason });
-          alert('Pedido enviado.');
-        };
+        b1.onclick=async()=>{ const reason=prompt('Explique o motivo da exclusão:')||''; await requestAdjustment({action:'delete',targetPath:p._path,type:p.type,reason}); alert('Pedido enviado.'); };
         const b2=document.createElement('button'); b2.textContent='Pedir ajuste horário';
-        b2.onclick = async ()=>{
-          const d = when.toISOString().slice(0,10);
-          const hh = String(when.getHours()).padStart(2,'0');
-          const mm = String(when.getMinutes()).padStart(2,'0');
-          const nh = prompt('Novo horário HH:MM', `${hh}:${mm}`); if(!nh) return;
-          const rs = prompt('Motivo do ajuste:')||'';
-          await requestAdjustment({ dateISO:d, timeHHMM:nh, type:p.type, reason:rs, action:'include' });
-          alert('Pedido de ajuste enviado.');
-        };
-        btns.appendChild(b1); btns.appendChild(b2);
-        li.appendChild(document.createElement('br'));
-        li.appendChild(btns);
-        ul.appendChild(li);
+        b2.onclick=async()=>{ const d=when.toISOString().slice(0,10); const hh=String(when.getHours()).padStart(2,'0'); const mm=String(when.getMinutes()).padStart(2,'0'); const nh=prompt('Novo horário HH:MM',`${hh}:${mm}`); if(!nh) return; const rs=prompt('Motivo do ajuste:')||''; await requestAdjustment({dateISO:d,timeHHMM:nh,type:p.type,reason:rs,action:'include'}); alert('Pedido enviado.'); };
+        btns.appendChild(b1); btns.appendChild(b2); li.appendChild(document.createElement('br')); li.appendChild(btns); ul.appendChild(li);
       }
     }
-
-    // total do dia
-    $('kToday').textContent = msToHHMM(computeDailyWorkMs(arr));
+    $('kToday').textContent=msToHHMM(computeDailyWorkMs(arr));
   }
 
-  // Botões
-  $('btnPunch').onclick = async ()=>{
-    $('status').textContent = 'Registrando...';
+  // Ações
+  $('btnPunch').onclick=async()=>{
+    $('status').textContent='Registrando...';
     try{
-      const d = new Date($('pDate').value || new Date());
-      const [hh,mm] = ($('pTime').value||'00:00').split(':').map(x=>parseInt(x||'0',10));
+      const d=new Date($('pDate').value||new Date());
+      const [hh,mm]=($('pTime').value||'00:00').split(':').map(x=>parseInt(x||'0',10));
       d.setHours(hh,mm,0,0);
       await addPunchAuto({ at:d, note:$('note').value||'' });
-      $('status').textContent='Ponto registrado!';
-      $('note').value='';
+      $('status').textContent='Ponto registrado!'; $('note').value='';
       await refreshType(); await refreshToday(); await refreshBankWidget();
-    }catch(e){ $('status').textContent='Erro: ' + (e?.message||e); }
+    }catch(e){ $('status').textContent='Erro: '+(e?.message||e); }
   };
-
-  $('btnPause').onclick = async ()=>{
-    const st = await getStatus(auth.currentUser.uid);
-    if (!st.hasOpen) { alert('Você ainda não registrou a entrada.'); return; }
-    if (st.hasBreakOpen) await endPause({ note:'Fim da pausa' });
+  $('btnPause').onclick=async()=>{
+    const st=await getStatus(auth.currentUser.uid);
+    if(!st.hasOpen){ alert('Você ainda não registrou a entrada.'); return; }
+    if(st.hasBreakOpen) await endPause({ note:'Fim da pausa' });
     else await startPause({ note:'Início da pausa' });
     await refreshType(); await refreshToday();
   };
-
-  $('btnExport').onclick = async ()=>{
+  $('btnExport').onclick=async()=>{
     const u=auth.currentUser; if(!u) return;
-    const mISO = $('mExport').value || new Date().toISOString().slice(0,7);
-    const from = `${mISO}-01`, to = `${mISO}-31`;
-    const data = await (await import('./app.js')).exportUserDataJSON(u.uid, from, to);
-    const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `ponto-${mISO}-${u.uid}.json`; a.click();
+    const mISO=$('mExport').value || new Date().toISOString().slice(0,7);
+    const data=await exportUserDataJSON(u.uid,`${mISO}-01`,`${mISO}-31`);
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`ponto-${mISO}-${u.uid}.json`; a.click();
   };
+  $('btnLogout').onclick=async()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.replace('login.html'); };
 
-  $('btnLogout').onclick = async ()=>{
-    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    await m.signOut(auth); location.href='login.html';
-  };
-
-  // login state
-  onUserChanged(async (user)=>{
-    if(!user){ location.href='login.html'; return; }
-    $('hello').textContent = `Olá, ${user.displayName||user.email||''}`;
+  // Estado de login + setup
+  onUserChanged(async(user)=>{
+    if(!user) return; // guard acima redireciona
+    $('hello').textContent=`Olá, ${user.displayName||user.email||''}`;
     await ensureRoleDoc(user.uid, user.displayName||'', user.email||'');
-
-    // link admin
-    const admin = await isAdmin(user.uid);
-    show($('adminLink'), admin);
-
-    nowToInputs();
-    await refreshType();
-    await refreshToday();
-    await refreshBankWidget();
-
-    // Admin também vê a área de batida
-    $('punchCard').classList.remove('hidden');
+    nowToInputs(); await refreshType(); await refreshToday(); await refreshBankWidget();
+    const admin=await isAdmin(user.uid); show($('adminLink'), admin);
+    $('punchCard').classList.remove('hidden'); // inclusive admins podem bater ponto
   });
 </script>
 </body>
