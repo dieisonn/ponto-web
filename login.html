@@ -8,21 +8,15 @@
   <meta name="theme-color" content="#4b4bd6">
   <link rel="icon" href="favicon.ico">
   <style>
-    :root{
-      --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --card:#fff; --bg:#f6f7fb; --bd:#e6e8ef;
-    }
+    :root{ --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --card:#fff; --bg:#f6f7fb; --bd:#e6e8ef; }
     *{box-sizing:border-box}
-    body{margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
-         background:var(--bg); color:var(--ink);}
+    body{margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--ink);}
     .wrap{min-height:100dvh; display:grid; place-items:center; padding:24px;}
-    .panel{width:min(560px,94vw); background:var(--card); border:1px solid var(--bd);
-           border-radius:16px; padding:28px; box-shadow:0 10px 30px rgba(40,48,80,.06);}
+    .panel{width:min(560px,94vw); background:var(--card); border:1px solid var(--bd); border-radius:16px; padding:28px; box-shadow:0 10px 30px rgba(40,48,80,.06);}
     h1{margin:0 0 4px; font-size:28px;}
     p.small{color:var(--mut); margin:0 0 22px;}
     label{font-weight:600; display:block; margin:10px 0 6px;}
-    input[type=email], input[type=password]{
-      width:100%; border:1px solid var(--bd); border-radius:10px; padding:12px 12px; font:inherit; background:#fff;
-    }
+    input[type=email],input[type=password]{width:100%; border:1px solid var(--bd); border-radius:10px; padding:12px; font:inherit; background:#fff;}
     .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
     .btn{padding:12px 16px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer; font-weight:600;}
     .btn.brand{background:var(--brand); border-color:var(--brand); color:#fff;}
@@ -41,11 +35,7 @@
         <img src="icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
         <div style="font-weight:800; font-size:18px;">Ponto</div>
         <span class="badge">beta</span>
-        <select id="lang" class="lang">
-          <option value="pt" selected>pt</option>
-          <option value="en">en</option>
-          <option value="es">es</option>
-        </select>
+        <select id="lang" class="lang"><option value="pt" selected>pt</option><option value="en">en</option><option value="es">es</option></select>
       </div>
 
       <h1>Bem-vindo(a)</h1>
@@ -60,7 +50,6 @@
       <div class="row">
         <button id="btnLogin" class="btn brand">Entrar</button>
         <button id="btnReset" class="btn">Esqueci a senha</button>
-        <!-- Habilite o botão de cadastro mudando ALLOW_SIGNUP para true no script -->
         <button id="btnSignup" class="btn link">Criar conta</button>
       </div>
 
@@ -77,75 +66,59 @@
   import { initApp, auth, ensureRoleDoc, isAdmin } from './app.js';
   await initApp();
 
-  // PWA (opcional)
+  // PWA
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
   }
   let deferredPrompt=null;
-  window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; });
-  document.getElementById('install').onchange = async (ev)=>{
-    if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; }
-    ev.target.checked=false;
-  };
+  window.addEventListener('beforeinstallprompt',(e)=>{ e.preventDefault(); deferredPrompt=e; });
+  document.getElementById('install').onchange=async ev=>{ if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; } ev.target.checked=false; };
 
-  const $ = (id)=>document.getElementById(id);
-  const setMsg = (m)=>{ $('status').textContent = m||''; };
+  const $=id=>document.getElementById(id);
+  const setMsg=m=>{ $('status').textContent=m||''; };
 
-  const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-
-  // Se quiser permitir auto-cadastro, altere para true:
-  const ALLOW_SIGNUP = true;
+  const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+  const ALLOW_SIGNUP=true; // coloque false se não quiser auto-cadastro
 
   async function afterLogin(user){
     await ensureRoleDoc(user.uid, user.displayName || (user.email? user.email.split('@')[0] : ''), user.email || '');
     const admin = await isAdmin(user.uid);
-    location.href = admin ? 'index.html' : 'admin.html';
+    // mapeamento correto: admin -> admin.html | user -> index.html
+    location.replace(admin ? 'admin.html' : 'index.html');
   }
-
   function showErr(e){
-    let msg = e?.code || e?.message || String(e);
-    if (e?.code === 'auth/invalid-credential' || e?.code === 'auth/wrong-password') msg = 'E-mail ou senha inválidos.';
-    if (e?.code === 'auth/user-not-found') msg = 'Usuário não encontrado.';
-    if (e?.code === 'auth/too-many-requests') msg = 'Muitas tentativas. Tente novamente em alguns minutos.';
-    if (e?.code === 'auth/operation-not-allowed') msg = 'Método de login não habilitado no Firebase (Email/Senha).';
+    let msg=e?.code||e?.message||String(e);
+    if(e?.code==='auth/invalid-credential'||e?.code==='auth/wrong-password') msg='E-mail ou senha inválidos.';
+    if(e?.code==='auth/user-not-found') msg='Usuário não encontrado.';
+    if(e?.code==='auth/too-many-requests') msg='Muitas tentativas. Tente novamente em alguns minutos.';
+    if(e?.code==='auth/operation-not-allowed') msg='Método de login não habilitado (email/senha).';
     setMsg('Erro: '+msg);
   }
 
-  $('btnLogin').onclick = async ()=>{
+  $('btnLogin').onclick=async()=>{
     try{
       setMsg('Autenticando...');
-      const cred = await m.signInWithEmailAndPassword(auth, $('email').value.trim(), $('pass').value);
+      const cred=await m.signInWithEmailAndPassword(auth,$('email').value.trim(),$('pass').value);
       await afterLogin(cred.user);
     }catch(e){ showErr(e); }
   };
-
-  $('btnReset').onclick = async ()=>{
-    const email = $('email').value.trim();
-    if(!email) return setMsg('Informe seu e-mail para receber o link.');
-    try{
-      await m.sendPasswordResetEmail(auth, email);
-      setMsg('Enviamos um link para redefinir sua senha.');
-    }catch(e){ showErr(e); }
+  $('btnReset').onclick=async()=>{
+    const email=$('email').value.trim(); if(!email) return setMsg('Informe seu e-mail para receber o link.');
+    try{ await m.sendPasswordResetEmail(auth,email); setMsg('Enviamos um link para redefinir sua senha.'); }
+    catch(e){ showErr(e); }
   };
-
-  $('btnSignup').onclick = async ()=>{
-    if(!ALLOW_SIGNUP){ alert('Criação de conta desativada. Peça ao admin para criar seu usuário.'); return; }
+  $('btnSignup').onclick=async()=>{
+    if(!ALLOW_SIGNUP){ alert('Criação de conta desativada.'); return; }
     try{
       setMsg('Criando conta...');
-      const email = $('email').value.trim();
-      const pass  = $('pass').value;
-      const cred = await m.createUserWithEmailAndPassword(auth, email, pass);
-      try{ await m.updateProfile(cred.user, { displayName: email.split('@')[0] }); }catch{}
+      const cred=await m.createUserWithEmailAndPassword(auth,$('email').value.trim(),$('pass').value);
+      try{ await m.updateProfile(cred.user,{ displayName:$('email').value.split('@')[0] }); }catch{}
       await afterLogin(cred.user);
     }catch(e){ showErr(e); }
   };
 
-  // Se já estiver logado, redireciona
-  m.onAuthStateChanged(auth, async (user)=>{
-    if (user){
-      try{ await afterLogin(user); }catch{}
-    }
-  });
+  // se já estiver logado, despacha
+  m.onAuthStateChanged(auth,(u)=>{ if(u) afterLogin(u); });
 </script>
 </body>
 </html>
