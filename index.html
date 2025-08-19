@@ -3,10 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" href="favicon.ico" sizes="any">
-  <link rel="manifest" href="manifest.webmanifest">
   <title>Painel Admin - Ponto</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.ico" sizes="any">
   <style>
     :root{
       --brand:#4b4bd6; --brand-600:#4646cc; --brand-400:#7575e6;
@@ -18,7 +17,7 @@
       --bg:#0f1220; --card:#14172a; --ink:#e9ecff; --mut:#a7b0ca; --bd:#262a44;
     }
     html,body{ background:var(--bg); color:var(--ink); }
-    body{ font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial; max-width:1100px; margin:24px auto; padding:0 12px; }
+    body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; max-width:1100px; margin:24px auto; padding:0 12px; }
     h1{ margin:0 0 16px; }
     a{ color:var(--brand); text-decoration:none }
     a:hover{ text-decoration:underline }
@@ -29,10 +28,8 @@
       border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:#fff
     }
     [data-theme="dark"] input,[data-theme="dark"] select{ background:#0f1122; color:var(--ink); border-color:#2a2f55 }
-    button{ padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer; transition:transform .06s ease }
-    button:active{ transform:scale(0.98) }
+    button{ padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer }
     button.primary{ background:var(--brand); color:#fff; border-color:var(--brand) }
-    button.primary:hover{ background:var(--brand-600); border-color:var(--brand-600) }
     button.ghost{ color:var(--brand); border-color:var(--brand-400); background:#eef0ff }
     button.danger{ color:#fff; background:#d9534f; border-color:#d9534f }
     table{ width:100%; border-collapse:collapse }
@@ -190,9 +187,9 @@
     const show = (el,v)=> el.classList.toggle('hidden', !v);
     const todayLocalISO = (d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const monthLocalISO = (d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const parseMin = s=>{const [h,m]=String(s||'0:0').split(':').map(n=>parseInt(n||'0',10)); return (isNaN(h)?0:h)*60+(isNaN(m)?0:m);};
+    const label = p => (p?.name?.trim() || (p?.email ? p.email.split('@')[0] : p?.uid || ''));
 
-    // Tema / i18n (básico)
+    // Tema / i18n
     const theme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     $('btnTheme').onclick = ()=>{
@@ -206,8 +203,8 @@
 
     if ($('dayPicker')) $('dayPicker').value = todayLocalISO();
     if ($('monthPicker')) $('monthPicker').value = monthLocalISO();
-    if ($('schMonth')) $('schMonth').value = monthLocalISO();
     if ($('tlDay')) $('tlDay').value = todayLocalISO();
+    if ($('schMonth')) $('schMonth').value = monthLocalISO();
 
     // Projetos
     async function refreshProjects(){
@@ -255,7 +252,7 @@
           const tr=document.createElement('tr');
           tr.innerHTML = `<td>${r.name}</td>
                           <td>${since.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
-                          <td><span class="pill ${warnClass}">${core.msToHHMM(r.elapsedMs)}</span></td>
+                          <td><span class="pill ${warnClass}">${msToHHMM(r.elapsedMs)}</span></td>
                           <td><button class="danger">Encerrar</button></td>`;
           tr.querySelector('.danger').onclick = async ()=>{ if(confirm('Encerrar jornada agora?')){ await forceCloseNow(r.uid); loadOpen(); loadDaily(); } };
           tb.appendChild(tr);
@@ -274,17 +271,21 @@
       const su = $('schUser'); su.innerHTML='';
       const tu = $('tlUser'); tu.innerHTML='';
       profiles.forEach(p=>{
-        const o1=new Option(p.name||p.uid, p.uid); uf.add(o1);
-        uc.add(new Option(p.name||p.uid, p.uid));
-        su.add(new Option(p.name||p.uid, p.uid));
-        tu.add(new Option(p.name||p.uid, p.uid));
+        const text = label(p);
+        uf.add(new Option(text, p.uid));
+        uc.add(new Option(text, p.uid));
+        su.add(new Option(text, p.uid));
+        tu.add(new Option(text, p.uid));
       });
       $('userDaily').value='08:00';
     }
     async function loadMonth(){
       const monthISO = $('monthPicker').value;
       const filter = $('userFilter').value;
-      const reqMin = parseMin($('reqDaily').value || '08:00');
+      const reqMin = (()=>{
+        const [h,m] = String(($('reqDaily').value||'08:00')).split(':').map(n=>parseInt(n||'0',10));
+        return (isNaN(h)?0:h)*60+(isNaN(m)?0:m);
+      })();
       const repsAll = await getMonthReportForAllUsers(monthISO, reqMin);
       const reps = filter==='__all' ? repsAll : repsAll.filter(r=>r.uid===filter);
 
@@ -309,8 +310,8 @@
           tb.appendChild(tr);
         });
       }
-      lastCSV = 'data:text/csv;charset=utf-8,' + encodeURIComponent(core.monthReportsToCSV(reps));
-      lastAOA = core.monthReportsToAOA(reps);
+      lastCSV = 'data:text/csv;charset=utf-8,' + encodeURIComponent(monthReportsToCSV(reps));
+      lastAOA = monthReportsToAOA(reps);
 
       renderHeatmap(reps);
     }
@@ -363,7 +364,7 @@
     function renderHeatmap(reps){
       const wrap=$('heat'); wrap.innerHTML='';
       if(!reps.length){ wrap.textContent='Sem dados.'; return; }
-      const grid = core.buildHeatmapGrid(reps);
+      const grid = buildHeatmapGrid(reps);
       const allDays = new Set(); grid.forEach(u=>u.days.forEach(d=>allDays.add(d.dayISO)));
       const sortedDays = [...allDays].sort().slice(-7);
       const head=document.createElement('div'); head.className='heat';
@@ -384,7 +385,7 @@
     $('btnTL').onclick = async ()=>{
       const uid=$('tlUser').value, day=$('tlDay').value;
       const arr=await listPunchesByDayForUser(uid, day);
-      const blocks=core.buildTimeline(arr);
+      const blocks=buildTimeline(arr);
       const wrap=$('tlWrap'); wrap.innerHTML='';
       if(!blocks.length){ wrap.innerHTML='<span class="muted">Sem blocos de trabalho.</span>'; return; }
       const total=24*60*60*1000;
@@ -403,7 +404,7 @@
     // Autenticação/boot
     const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
     mAuth.onAuthStateChanged(auth, async (user)=>{
-      if (!user){ $('gate').textContent='Não logado'; show($('adminArea'), false); return; }
+      if (!user){ location.href='login.html'; return; }
       const ok = await isAdmin(user.uid);
       $('gate').textContent = ok ? 'Admin OK' : 'Sem permissão';
       show($('adminArea'), ok);
@@ -417,7 +418,7 @@
     });
 
     $('btnLoad').onclick = loadDaily;
-    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='admin.html'; };
+    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='login.html'; };
   </script>
   <script>
     if ('serviceWorker' in navigator) {
@@ -426,4 +427,3 @@
   </script>
 </body>
 </html>
-
