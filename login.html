@@ -19,20 +19,19 @@
            border-radius:16px; padding:28px; box-shadow:0 10px 30px rgba(40,48,80,.06);}
     h1{margin:0 0 4px; font-size:28px;}
     p.small{color:var(--mut); margin:0 0 22px;}
-    .btn{display:flex; align-items:center; gap:10px; justify-content:center; width:100%;
-         padding:14px 16px; border-radius:12px; border:1px solid var(--bd); background:#fff;
-         cursor:pointer; font-weight:600;}
-    .btn:hover{border-color:#d5d9e6}
-    .btn.brand{background:var(--brand); border-color:var(--brand); color:#fff;}
-    .btn .ic{width:20px; height:20px}
+    label{font-weight:600; display:block; margin:10px 0 6px;}
+    input[type=email], input[type=password]{
+      width:100%; border:1px solid var(--bd); border-radius:10px; padding:12px 12px; font:inherit; background:#fff;
+    }
     .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
-    .tip{font-size:13px; color:var(--mut); text-align:center; margin-top:14px}
+    .btn{padding:12px 16px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer; font-weight:600;}
+    .btn.brand{background:var(--brand); border-color:var(--brand); color:#fff;}
+    .btn.link{background:transparent;}
     .foot{display:flex; justify-content:space-between; align-items:center; margin-top:18px; color:var(--mut); font-size:13px}
-    .switch{display:inline-flex; align-items:center; gap:8px; font-size:14px}
-    .switch input{accent-color:var(--brand)}
     .brand{display:flex; align-items:center; gap:10px; margin-bottom:16px}
-    .badge{background:rgba(75,75,214,.08); color:#2b2bd8; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600}
+    .badge{background:rgba(75,75,214,.08); color:#2b2bd8; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:700}
     .lang{margin-left:auto; border:1px solid var(--bd); border-radius:10px; padding:6px 8px; font:inherit}
+    .tip{font-size:13px; color:var(--mut); margin-top:12px; min-height:1.2em}
   </style>
 </head>
 <body>
@@ -43,27 +42,32 @@
         <div style="font-weight:800; font-size:18px;">Ponto</div>
         <span class="badge">beta</span>
         <select id="lang" class="lang">
-          <option value="pt">pt</option><option value="en">en</option><option value="es">es</option>
+          <option value="pt" selected>pt</option>
+          <option value="en">en</option>
+          <option value="es">es</option>
         </select>
       </div>
 
       <h1>Bem-vindo(a)</h1>
-      <p class="small">Faça login para registrar sua jornada e acessar seu banco de horas.</p>
+      <p class="small">Entre com seu e-mail e senha para registrar sua jornada.</p>
 
-      <button id="btnGoogle" class="btn">
-        <img class="ic" src="google.svg" alt="">
-        Entrar com Google
-      </button>
+      <label for="email">E-mail</label>
+      <input id="email" type="email" placeholder="voce@empresa.com" autocomplete="username" required>
+
+      <label for="pass">Senha</label>
+      <input id="pass" type="password" placeholder="••••••••" autocomplete="current-password" required>
 
       <div class="row">
-        <button id="btnAnon" class="btn" title="Somente para teste/demonstração">Entrar como demo</button>
-        <a href="https://accounts.google.com/SignUp" class="btn" style="text-decoration:none" target="_blank" rel="noopener">Criar conta Google</a>
+        <button id="btnLogin" class="btn brand">Entrar</button>
+        <button id="btnReset" class="btn">Esqueci a senha</button>
+        <!-- Habilite o botão de cadastro mudando ALLOW_SIGNUP para true no script -->
+        <button id="btnSignup" class="btn link">Criar conta</button>
       </div>
 
       <p id="status" class="tip"></p>
 
       <div class="foot">
-        <label class="switch"><input id="install" type="checkbox"> instalar como app</label>
+        <label><input id="install" type="checkbox"> instalar como app</label>
         <span>© <script>document.write(new Date().getFullYear())</script></span>
       </div>
     </div>
@@ -73,44 +77,75 @@
   import { initApp, auth, ensureRoleDoc, isAdmin } from './app.js';
   await initApp();
 
-  // PWA
+  // PWA (opcional)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
   }
+  let deferredPrompt=null;
+  window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; });
+  document.getElementById('install').onchange = async (ev)=>{
+    if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; }
+    ev.target.checked=false;
+  };
 
-  const $ = s => document.querySelector(s);
-  const status = $('#status');
+  const $ = (id)=>document.getElementById(id);
+  const setMsg = (m)=>{ $('status').textContent = m||''; };
 
-  const setLoading = (t)=>{ status.textContent = t || ''; };
+  const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
 
-  document.getElementById('btnGoogle').onclick = async ()=>{
-    setLoading('Abrindo Google...');
-    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    const prov = new m.GoogleAuthProvider();
-    prov.setCustomParameters({ prompt:'select_account' });
+  // Se quiser permitir auto-cadastro, altere para true:
+  const ALLOW_SIGNUP = true;
+
+  async function afterLogin(user){
+    await ensureRoleDoc(user.uid, user.displayName || (user.email? user.email.split('@')[0] : ''), user.email || '');
+    const admin = await isAdmin(user.uid);
+    location.href = admin ? 'index.html' : 'admin.html';
+  }
+
+  function showErr(e){
+    let msg = e?.code || e?.message || String(e);
+    if (e?.code === 'auth/invalid-credential' || e?.code === 'auth/wrong-password') msg = 'E-mail ou senha inválidos.';
+    if (e?.code === 'auth/user-not-found') msg = 'Usuário não encontrado.';
+    if (e?.code === 'auth/too-many-requests') msg = 'Muitas tentativas. Tente novamente em alguns minutos.';
+    if (e?.code === 'auth/operation-not-allowed') msg = 'Método de login não habilitado no Firebase (Email/Senha).';
+    setMsg('Erro: '+msg);
+  }
+
+  $('btnLogin').onclick = async ()=>{
     try{
-      const r = await m.signInWithPopup(auth, prov);
-      await ensureRoleDoc(r.user.uid, r.user.displayName||'', r.user.email||'');
-      const admin = await isAdmin(r.user.uid);
-      location.href = admin ? 'index.html' : 'admin.html';
-    }catch(e){ setLoading('Falha no login: '+(e?.message||e)); }
+      setMsg('Autenticando...');
+      const cred = await m.signInWithEmailAndPassword(auth, $('email').value.trim(), $('pass').value);
+      await afterLogin(cred.user);
+    }catch(e){ showErr(e); }
   };
 
-  document.getElementById('btnAnon').onclick = async ()=>{
-    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    await m.signInAnonymously(auth);
-    setLoading('Entrou em modo demonstração.');
-    location.href = 'admin.html';
+  $('btnReset').onclick = async ()=>{
+    const email = $('email').value.trim();
+    if(!email) return setMsg('Informe seu e-mail para receber o link.');
+    try{
+      await m.sendPasswordResetEmail(auth, email);
+      setMsg('Enviamos um link para redefinir sua senha.');
+    }catch(e){ showErr(e); }
   };
 
-  // Install switch
-  const chk = document.getElementById('install');
-  let deferredPrompt = null;
-  window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt = e; chk.disabled=false; });
-  chk.onchange = async ()=>{
-    if (deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; }
-    chk.checked = false;
+  $('btnSignup').onclick = async ()=>{
+    if(!ALLOW_SIGNUP){ alert('Criação de conta desativada. Peça ao admin para criar seu usuário.'); return; }
+    try{
+      setMsg('Criando conta...');
+      const email = $('email').value.trim();
+      const pass  = $('pass').value;
+      const cred = await m.createUserWithEmailAndPassword(auth, email, pass);
+      try{ await m.updateProfile(cred.user, { displayName: email.split('@')[0] }); }catch{}
+      await afterLogin(cred.user);
+    }catch(e){ showErr(e); }
   };
+
+  // Se já estiver logado, redireciona
+  m.onAuthStateChanged(auth, async (user)=>{
+    if (user){
+      try{ await afterLogin(user); }catch{}
+    }
+  });
 </script>
 </body>
 </html>
