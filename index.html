@@ -3,427 +3,241 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Painel Admin - Ponto</title>
+  <title>Marcação de Ponto</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="favicon.ico" sizes="any">
+  <meta name="theme-color" content="#4b4bd6">
+  <link rel="icon" href="favicon.ico">
   <style>
     :root{
-      --brand:#4b4bd6; --brand-600:#4646cc; --brand-400:#7575e6;
-      --ink:#1f2430; --mut:#637085;
-      --bg:#f6f7fb; --card:#fff; --bd:#e6e8f0;
-      --ok:#1b7a3b; --warn:#7a5a00; --bad:#b11;
+      --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --bd:#e6e8ef; --bg:#f6f7fb; --card:#fff;
+      --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
     }
-    [data-theme="dark"]{
-      --bg:#0f1220; --card:#14172a; --ink:#e9ecff; --mut:#a7b0ca; --bd:#262a44;
+    [data-theme="dark"]{ --bg:#0f1220; --ink:#eef2ff; --mut:#9aa3b2; --card:#12162a; --bd:#242b45; }
+    *{box-sizing:border-box}
+    body{margin:0; background:var(--bg); color:var(--ink);
+         font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
+    .wrap{max-width:980px; margin:26px auto; padding:0 14px;}
+    h1{margin:0 0 18px; font-size:34px; letter-spacing:.2px}
+    a{color:var(--brand); text-decoration:none}
+    .card{background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; margin:12px 0;}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    input,select,button{font-size:15px}
+    input[type=date],input[type=time],input[type=month],input[type=text],select{
+      border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:transparent; color:inherit;
     }
-    html,body{ background:var(--bg); color:var(--ink); }
-    body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; max-width:1100px; margin:24px auto; padding:0 12px; }
-    h1{ margin:0 0 16px; }
-    a{ color:var(--brand); text-decoration:none }
-    a:hover{ text-decoration:underline }
-    .card{ background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; margin:12px 0; box-shadow:0 2px 6px rgba(0,0,0,.05) }
-    .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
-    input,select,button{ font-size:15px }
-    input[type=date],input[type=month],input[type=text],select{
-      border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:#fff
-    }
-    [data-theme="dark"] input,[data-theme="dark"] select{ background:#0f1122; color:var(--ink); border-color:#2a2f55 }
-    button{ padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer }
-    button.primary{ background:var(--brand); color:#fff; border-color:var(--brand) }
-    button.ghost{ color:var(--brand); border-color:var(--brand-400); background:#eef0ff }
-    button.danger{ color:#fff; background:#d9534f; border-color:#d9534f }
-    table{ width:100%; border-collapse:collapse }
-    th,td{ border:1px solid var(--bd); padding:8px 10px; text-align:left }
-    th{ background:#fafbff }
-    [data-theme="dark"] th{ background:#1a1e36 }
-    .muted{ color:var(--mut) }
-    .hidden{ display:none }
-    .right{ margin-left:auto }
-    .pill{ display:inline-block; background:#eef0ff; color:var(--brand); border:1px solid var(--brand-400); border-radius:999px; padding:2px 8px; font-size:12px }
-    .warn{ background:#fff8e1; border-color:#ffe49c; color:var(--warn) }
-    .bad{ background:#ffecec; border-color:#ffd2d2; color:var(--bad) }
-    .grid{ display:grid; gap:6px }
-    .heat{ display:grid; grid-template-columns: 140px repeat(7, 1fr); gap:6px; align-items:center }
-    .heat .cell{ height:16px; border-radius:4px; }
-    .c-ok{ background:#b5f5c0 }
-    .c-late{ background:#ffe49c }
-    .c-abs{ background:#ffb3b3 }
+    button{padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer}
+    [data-theme="dark"] button{background:#141a33}
+    button.primary{background:var(--brand); color:#fff; border-color:var(--brand)}
+    .muted{color:var(--mut)}
+    .hidden{display:none}
+    .pill{display:inline-block; background:rgba(75,75,214,.12); color:#dfe1ff; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700}
+    .kpi{display:flex; gap:16px; align-items:center; flex-wrap:wrap; font-size:14px}
+    .kpi span{background:rgba(127,138,255,.08); border:1px solid var(--bd); padding:6px 10px; border-radius:999px}
+    .right{margin-left:auto}
+    .tag{display:inline-block; padding:2px 6px; border-radius:999px; font-size:12px; border:1px solid var(--bd)}
   </style>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-  <div class="row" style="justify-content:space-between;align-items:center">
-    <h1>Painel do Administrador</h1>
-    <div class="row">
-      <button id="btnTheme" class="ghost">🌓 Tema</button>
-      <select id="langSel"><option value="pt">pt</option><option value="en">en</option></select>
+  <div class="wrap">
+    <div class="row" style="justify-content:space-between; align-items:flex-start">
+      <h1>Marcação de Ponto</h1>
+      <div class="row">
+        <button id="btnTheme" class="tag">🌓 Tema</button>
+        <select id="locale" class="tag"><option>pt</option><option>en</option><option>es</option></select>
+      </div>
     </div>
-  </div>
-  <p><a href="admin.html">← Colaborador</a></p>
 
-  <div class="card"><b>Status:</b> <span id="gate">Verificando...</span></div>
-
-  <div id="adminArea" class="hidden">
-
-    <!-- Diário -->
-    <div class="row">
-      <label>Data:</label><input type="date" id="dayPicker" />
-      <button id="btnLoad" class="primary">Carregar</button>
-      <button id="btnLogout" class="right">Sair</button>
-    </div>
+    <div id="hello" class="muted" style="margin:6px 0 14px"></div>
 
     <div class="card">
-      <h3 style="margin-top:0">Registros do dia</h3>
-      <table>
-        <thead><tr><th>Colaborador</th><th>Horário / Tipo / Obs</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
+      <div class="kpi">
+        <span>Hoje: <b id="kToday">00:00</b></span>
+        <span>Banco (mês): <b id="kBankMonth">--:--</b></span>
+        <span class="muted">Créditos: 1.5× normal, 2.0× domingos/feriados. Jornada diária configurável pelo admin.</span>
+        <a href="index.html" id="adminLink" class="right hidden">Painel Admin</a>
+      </div>
     </div>
 
-    <!-- Em jornada agora -->
-    <div class="card">
+    <!-- Bater ponto -->
+    <div id="punchCard" class="card">
       <div class="row" style="justify-content:space-between;">
-        <h3 style="margin:0">Em jornada agora</h3>
-        <span class="pill" id="openCount">0 colaborador(es)</span>
+        <h3 style="margin:0">Bater ponto</h3>
+        <span class="pill" id="pillType">Entrada</span>
       </div>
-      <table style="margin-top:8px">
-        <thead><tr><th>Colaborador</th><th>Desde</th><th>Tempo Atual</th><th>Ação</th></tr></thead>
-        <tbody id="tbodyOpen"></tbody>
-      </table>
-      <p class="muted" style="margin-top:6px">Amarelo &gt; 6h; vermelho &gt; 10h sem pausa/saída.</p>
+      <div class="row" style="margin-top:8px">
+        <label>Data:</label><input type="date" id="pDate" />
+        <label>Hora:</label><input type="time" id="pTime" step="60" />
+      </div>
+      <div style="margin-top:8px">
+        <label>Motivo/Observação</label>
+        <input id="note" type="text" placeholder="Opcional" />
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnPunch" class="primary">Registrar</button>
+        <button id="btnPause"  title="Início/Fim de pausa">Pausa</button>
+        <button id="btnLogout" class="right">Sair</button>
+      </div>
+      <p id="status" class="muted" style="margin-top:10px"></p>
     </div>
 
-    <!-- Projetos -->
+    <!-- Export meus dados -->
     <div class="card">
-      <h3 style="margin:0 0 8px 0">Projetos</h3>
+      <h3 style="margin:6px 0 10px">Baixar meus dados (JSON)</h3>
       <div class="row">
-        <input id="projName" type="text" placeholder="Nome do projeto" />
-        <button id="btnAddProj" class="primary">Adicionar</button>
-        <span id="projMsg" class="muted"></span>
-      </div>
-      <ul id="projList" style="margin-top:8px"></ul>
-    </div>
-
-    <!-- Escalas/Turnos -->
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Escalas / Turnos</h3>
-      <div class="row">
-        <label>Colaborador:</label><select id="schUser"></select>
-        <label>Mês:</label><input type="month" id="schMonth" />
-        <button id="btnLoadSch" class="ghost">Carregar</button>
-        <button id="btnSaveSch" class="primary">Salvar alterações</button>
-      </div>
-      <table style="margin-top:8px">
-        <thead><tr><th>Dia</th><th>Início</th><th>Fim</th><th>Pausa (min)</th></tr></thead>
-        <tbody id="tbodySch"></tbody>
-      </table>
-    </div>
-
-    <!-- Relatórios -->
-    <div class="card">
-      <h3 style="margin-top:0">Relatório mensal / Banco de horas</h3>
-      <div class="row">
-        <label>Mês:</label><input type="month" id="monthPicker" />
-        <label>Colaborador:</label><select id="userFilter"><option value="__all">Todos</option></select>
-        <label>Jornada diária (HH:MM):</label><input type="text" id="reqDaily" value="08:00" />
-        <button id="btnMonth" class="primary">Gerar</button>
-        <button id="btnCSV" class="ghost right">CSV</button>
-        <button id="btnXLSX" class="ghost">XLSX</button>
-      </div>
-
-      <table style="margin-top:8px">
-        <thead>
-          <tr>
-            <th>Colaborador</th><th>Dias</th><th>Trabalhado</th><th>Requerido</th>
-            <th>Créditos*</th><th>Débito</th><th>Saldo</th><th>Saldo Ant.</th><th>Saldo Final</th><th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyMonth"></tbody>
-      </table>
-      <p class="muted" style="margin-top:6px">* 1.5× normal, 2.0× domingos/feriados. Pausas nomeadas não sofrem penalidade.</p>
-    </div>
-
-    <!-- Heatmap -->
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Heatmap de presença (semana atual)</h3>
-      <div id="heat" class="grid"></div>
-    </div>
-
-    <!-- Timeline diária -->
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Timeline do dia</h3>
-      <div class="row">
-        <label>Colaborador:</label><select id="tlUser"></select>
-        <label>Data:</label><input type="date" id="tlDay" />
-        <button id="btnTL" class="ghost">Mostrar</button>
-      </div>
-      <div id="tlWrap" style="margin-top:10px"></div>
-    </div>
-
-    <!-- Config por colaborador -->
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Configuração do colaborador</h3>
-      <div class="row">
-        <label>Colaborador:</label><select id="userCfg"></select>
-        <label>Jornada diária (HH:MM):</label><input type="text" id="userDaily" value="08:00" />
-        <button id="btnSaveDaily" class="primary">Salvar</button>
+        <label>Mês:</label>
+        <input type="month" id="mExport"/>
+        <button id="btnExport">Baixar</button>
       </div>
     </div>
 
+    <!-- Registros do dia -->
+    <div class="card">
+      <h3 style="margin:6px 0 10px">Registros de hoje</h3>
+      <ul id="listToday" class="clean" style="margin:0; padding-left:20px"></ul>
+    </div>
   </div>
 
-  <script type="module">
-    import * as core from './app.js';
-    await core.initApp();
+<script type="module">
+  import {
+    initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
+    addPunchAuto, startPause, endPause,
+    listPunchesByDayForUser, getNextTypeFor,
+    computeDailyWorkMs, msToHHMM, requestAdjustment,
+    getMonthReportForUser, getStatus
+  } from './app.js';
 
-    const { auth, isAdmin, listAllProfiles,
-            listProjects, addProject,
-            listPunchesByDayAllUsers, listOpenShiftsAllUsers,
-            getMonthReportForAllUsers, monthReportsToCSV, monthReportsToAOA, msToHHMM,
-            setRequiredDaily, forceCloseNow, saveMonthBalance,
-            getScheduleMonth, setScheduleDay, buildHeatmapGrid, listPunchesByDayForUser, buildTimeline } = core;
+  await initApp();
 
-    const $ = id => document.getElementById(id);
-    const show = (el,v)=> el.classList.toggle('hidden', !v);
-    const todayLocalISO = (d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const monthLocalISO = (d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const label = p => (p?.name?.trim() || (p?.email ? p.email.split('@')[0] : p?.uid || ''));
+  const $ = id => document.getElementById(id);
+  const show = (el,v)=> el.classList.toggle('hidden', !v);
+  const fmt = (d)=> d.toLocaleString(($('locale').value||'pt')+'-BR',
+                        {hour:'2-digit',minute:'2-digit'});
 
-    // Tema / i18n
-    const theme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    $('btnTheme').onclick = ()=>{
-      const cur = document.documentElement.getAttribute('data-theme');
-      const nxt = cur==='light'?'dark':'light';
-      document.documentElement.setAttribute('data-theme', nxt);
-      localStorage.setItem('theme', nxt);
-    };
-    $('langSel').value = localStorage.getItem('lang') || 'pt';
-    $('langSel').onchange = ()=> localStorage.setItem('lang', $('langSel').value);
+  // Tema
+  const root = document.documentElement;
+  $('btnTheme').onclick = ()=> {
+    root.setAttribute('data-theme', root.getAttribute('data-theme')==='dark'?'light':'dark');
+  };
 
-    if ($('dayPicker')) $('dayPicker').value = todayLocalISO();
-    if ($('monthPicker')) $('monthPicker').value = monthLocalISO();
-    if ($('tlDay')) $('tlDay').value = todayLocalISO();
-    if ($('schMonth')) $('schMonth').value = monthLocalISO();
+  function nowToInputs(){
+    const n=new Date();
+    $('pDate').value = n.toISOString().slice(0,10);
+    $('pTime').value = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+  }
 
-    // Projetos
-    async function refreshProjects(){
-      const ps = await listProjects();
-      const ul = $('projList'); ul.innerHTML='';
-      ps.forEach(p=>{ const li=document.createElement('li'); li.textContent=p.name; ul.appendChild(li); });
-    }
-    $('btnAddProj').onclick = async ()=>{
-      const name = $('projName').value.trim(); if(!name) return;
-      await addProject(name); $('projName').value=''; $('projMsg').textContent='Projeto adicionado'; setTimeout(()=> $('projMsg').textContent='',1500);
-      await refreshProjects();
-    };
+  async function refreshType(){
+    const user = auth.currentUser; if(!user) return;
+    const next = await getNextTypeFor(user.uid);
+    $('pillType').textContent = (next==='entrada' ? 'Entrada' : (next==='saida'?'Saída':'Fim de pausa'));
+    $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada' : (next==='saida'?'Saída':'Fim de pausa'));
+  }
 
-    // Diário
-    async function loadDaily(){
-      const day = $('dayPicker').value;
-      const rows = await listPunchesByDayAllUsers(day);
-      const tb = $('tbody'); tb.innerHTML='';
-      if (!rows.length){
-        const tr=document.createElement('tr'); tr.innerHTML='<td colspan="2" class="muted">Sem registros.</td>'; tb.appendChild(tr);
-      } else {
-        rows.forEach(r=>{
-          const d = r.at?.toDate ? r.at.toDate() : new Date(r.at||r.ts);
-          const tr=document.createElement('tr');
-          tr.innerHTML = `<td>${r.name||r.uid}</td><td>${d.toLocaleString('pt-BR')} (${r.type})${r.projId ? ' — ['+r.projId+']' : ''}${r.note? ' — '+r.note:''}</td>`;
-          tb.appendChild(tr);
-        });
-      }
-      await loadOpen();
-    }
+  async function refreshBankWidget(){
+    const u=auth.currentUser; if(!u) return;
+    const m = new Date().toISOString().slice(0,7);
+    const rep = await getMonthReportForUser(u.uid, m);
+    $('kBankMonth').textContent = msToHHMM(rep.totals.balanceMs);
+  }
 
-    // Em jornada
-    let openInterval=null;
-    async function loadOpen(){
-      const day = $('dayPicker').value;
-      const rows = await listOpenShiftsAllUsers(day);
-      const tb = $('tbodyOpen'); tb.innerHTML='';
-      $('openCount').textContent = `${rows.length} colaborador(es)`;
-      if (!rows.length){
-        const tr=document.createElement('tr'); tr.innerHTML='<td colspan="4" class="muted">Ninguém em jornada agora.</td>'; tb.appendChild(tr);
-      } else {
-        rows.forEach(r=>{
-          const since = new Date(r.since);
-          const warnClass = r.elapsedMs>10*3600000 ? 'bad' : (r.elapsedMs>6*3600000 ? 'warn' : '');
-          const tr=document.createElement('tr');
-          tr.innerHTML = `<td>${r.name}</td>
-                          <td>${since.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
-                          <td><span class="pill ${warnClass}">${msToHHMM(r.elapsedMs)}</span></td>
-                          <td><button class="danger">Encerrar</button></td>`;
-          tr.querySelector('.danger').onclick = async ()=>{ if(confirm('Encerrar jornada agora?')){ await forceCloseNow(r.uid); loadOpen(); loadDaily(); } };
-          tb.appendChild(tr);
-        });
-      }
-      if (openInterval) clearInterval(openInterval);
-      openInterval = setInterval(loadOpen, 30000);
-    }
+  async function refreshToday(){
+    const u=auth.currentUser; if(!u) return;
+    const day = new Date().toISOString().slice(0,10);
+    const arr = await listPunchesByDayForUser(u.uid, day);
 
-    // Relatórios
-    let lastCSV='data:text/plain;charset=utf-8,', lastAOA=[];
-    async function hydrateProfiles(){
-      const profiles = await listAllProfiles();
-      const uf = $('userFilter'); uf.innerHTML='<option value="__all">Todos</option>';
-      const uc = $('userCfg'); uc.innerHTML='';
-      const su = $('schUser'); su.innerHTML='';
-      const tu = $('tlUser'); tu.innerHTML='';
-      profiles.forEach(p=>{
-        const text = label(p);
-        uf.add(new Option(text, p.uid));
-        uc.add(new Option(text, p.uid));
-        su.add(new Option(text, p.uid));
-        tu.add(new Option(text, p.uid));
-      });
-      $('userDaily').value='08:00';
-    }
-    async function loadMonth(){
-      const monthISO = $('monthPicker').value;
-      const filter = $('userFilter').value;
-      const reqMin = (()=>{
-        const [h,m] = String(($('reqDaily').value||'08:00')).split(':').map(n=>parseInt(n||'0',10));
-        return (isNaN(h)?0:h)*60+(isNaN(m)?0:m);
-      })();
-      const repsAll = await getMonthReportForAllUsers(monthISO, reqMin);
-      const reps = filter==='__all' ? repsAll : repsAll.filter(r=>r.uid===filter);
-
-      const tb = $('tbodyMonth'); tb.innerHTML='';
-      if (!reps.length){
-        const tr=document.createElement('tr'); tr.innerHTML='<td colspan="10" class="muted">Sem lançamentos neste mês.</td>'; tb.appendChild(tr);
-      } else {
-        reps.forEach(r=>{
-          const t=r.totals;
-          const tr=document.createElement('tr');
-          tr.innerHTML = `<td>${r.name || r.uid}</td>
-                          <td>${r.daily.length}</td>
-                          <td>${msToHHMM(t.workedMs)}</td>
-                          <td>${msToHHMM(t.requiredMs)}</td>
-                          <td>${msToHHMM(t.creditMs)}</td>
-                          <td>${msToHHMM(t.deficitMs)}</td>
-                          <td>${msToHHMM(t.balanceMs)}</td>
-                          <td>${msToHHMM(t.prevBalanceMs)}</td>
-                          <td><b>${msToHHMM(t.finalBalanceMs)}</b></td>
-                          <td><button class="ghost close">Fechar mês</button></td>`;
-          tr.querySelector('.close').onclick = async ()=>{ await saveMonthBalance(r.uid, monthISO, t.finalBalanceMs, true); alert('Fechamento salvo e período travado.'); };
-          tb.appendChild(tr);
-        });
-      }
-      lastCSV = 'data:text/csv;charset=utf-8,' + encodeURIComponent(monthReportsToCSV(reps));
-      lastAOA = monthReportsToAOA(reps);
-
-      renderHeatmap(reps);
-    }
-    $('btnMonth').onclick = loadMonth;
-    $('btnCSV').onclick = ()=>{ const a=document.createElement('a'); a.href=lastCSV; a.download=`relatorio_${$('monthPicker').value}.csv`; a.click(); };
-    $('btnXLSX').onclick = ()=>{
-      const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(lastAOA);
-      XLSX.utils.book_append_sheet(wb, ws, 'Relatório'); XLSX.writeFile(wb, `relatorio_${$('monthPicker').value}.xlsx`);
-    };
-
-    // Config de jornada do colaborador
-    $('userCfg').onchange = async ()=>{
-      const uid=$('userCfg').value; const list = await listAllProfiles(); const p=list.find(x=>x.uid===uid);
-      $('userDaily').value = p?.requiredDaily || '08:00';
-    };
-    $('btnSaveDaily').onclick = async ()=>{ const uid=$('userCfg').value; if(!uid) return; await setRequiredDaily(uid, $('userDaily').value||'08:00'); alert('Jornada diária salva!'); };
-
-    // Escalas
-    $('btnLoadSch').onclick = async ()=>{
-      const uid=$('schUser').value, m=$('schMonth').value;
-      const map = await getScheduleMonth(uid, m);
-      renderSchTable(uid, m, map);
-    };
-    $('btnSaveSch').onclick = async ()=>{
-      const uid=$('schUser').value;
-      const rows=[...document.querySelectorAll('#tbodySch tr')];
-      for(const tr of rows){
-        const day = tr.dataset.day;
-        const start = tr.querySelector('.s').value; const end = tr.querySelector('.e').value; const br = tr.querySelector('.b').value;
-        if (start || end || br) await setScheduleDay(uid, day, start||'', end||'', br||0);
-      }
-      alert('Escala salva!');
-    };
-    function renderSchTable(uid, monthISO, map){
-      const [y,m]=monthISO.split('-').map(Number); const days=new Date(y, m, 0).getDate();
-      const tb=$('tbodySch'); tb.innerHTML='';
-      for(let d=1; d<=days; d++){
-        const dayISO=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const sc=map.get(dayISO)||{};
-        const tr=document.createElement('tr'); tr.dataset.day=dayISO;
-        tr.innerHTML = `<td>${dayISO}</td>
-                        <td><input class="s" type="time" value="${sc.start||''}"></td>
-                        <td><input class="e" type="time" value="${sc.end||''}"></td>
-                        <td><input class="b" type="number" min="0" step="5" style="width:80px" value="${sc.breakMin||0}"></td>`;
-        tb.appendChild(tr);
+    // lista
+    const ul=$('listToday'); ul.innerHTML='';
+    if(!arr.length){
+      const li=document.createElement('li'); li.className='muted'; li.textContent='Nenhum registro hoje.'; ul.appendChild(li);
+    }else{
+      for(const p of arr){
+        const when = p.at?.toDate ? p.at.toDate() : new Date(p.at||p.ts);
+        const li=document.createElement('li');
+        li.style.marginBottom='10px';
+        li.textContent = `${fmt(when)} (${p.type})` + (p.note?` — ${p.note}`:'');
+        // Ações de ajuste
+        const btns=document.createElement('div'); btns.className='row'; btns.style.marginTop='6px';
+        const b1=document.createElement('button'); b1.textContent='Pedir exclusão';
+        b1.onclick = async ()=>{
+          const reason = prompt('Explique o motivo da exclusão:')||'';
+          await requestAdjustment({ action:'delete', targetPath:p._path, type:p.type, reason });
+          alert('Pedido enviado.');
+        };
+        const b2=document.createElement('button'); b2.textContent='Pedir ajuste horário';
+        b2.onclick = async ()=>{
+          const d = when.toISOString().slice(0,10);
+          const hh = String(when.getHours()).padStart(2,'0');
+          const mm = String(when.getMinutes()).padStart(2,'0');
+          const nh = prompt('Novo horário HH:MM', `${hh}:${mm}`); if(!nh) return;
+          const rs = prompt('Motivo do ajuste:')||'';
+          await requestAdjustment({ dateISO:d, timeHHMM:nh, type:p.type, reason:rs, action:'include' });
+          alert('Pedido de ajuste enviado.');
+        };
+        btns.appendChild(b1); btns.appendChild(b2);
+        li.appendChild(document.createElement('br'));
+        li.appendChild(btns);
+        ul.appendChild(li);
       }
     }
 
-    // Heatmap
-    function renderHeatmap(reps){
-      const wrap=$('heat'); wrap.innerHTML='';
-      if(!reps.length){ wrap.textContent='Sem dados.'; return; }
-      const grid = buildHeatmapGrid(reps);
-      const allDays = new Set(); grid.forEach(u=>u.days.forEach(d=>allDays.add(d.dayISO)));
-      const sortedDays = [...allDays].sort().slice(-7);
-      const head=document.createElement('div'); head.className='heat';
-      head.innerHTML = `<div><b>Colaborador</b></div>` + sortedDays.map(d=>`<div class="muted" style="font-size:12px">${d.slice(5)}</div>`).join('');
-      wrap.appendChild(head);
-      grid.forEach(u=>{
-        const row=document.createElement('div'); row.className='heat';
-        row.innerHTML = `<div>${u.name}</div>` + sortedDays.map(d=>{
-          const st=u.days.find(x=>x.dayISO===d)?.status || 'abs';
-          const cls = st==='ok'?'c-ok':(st==='late'?'c-late':'c-abs');
-          return `<div class="cell ${cls}" title="${d} ${st}"></div>`;
-        }).join('');
-        wrap.appendChild(row);
-      });
-    }
+    // total do dia
+    $('kToday').textContent = msToHHMM(computeDailyWorkMs(arr));
+  }
 
-    // Timeline diária
-    $('btnTL').onclick = async ()=>{
-      const uid=$('tlUser').value, day=$('tlDay').value;
-      const arr=await listPunchesByDayForUser(uid, day);
-      const blocks=buildTimeline(arr);
-      const wrap=$('tlWrap'); wrap.innerHTML='';
-      if(!blocks.length){ wrap.innerHTML='<span class="muted">Sem blocos de trabalho.</span>'; return; }
-      const total=24*60*60*1000;
-      const d=new Date(day);
-      const base=+new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0);
-      const bar=document.createElement('div'); bar.style.position='relative'; bar.style.height='16px'; bar.style.background='#e9ebff'; bar.style.borderRadius='8px';
-      blocks.forEach(b=>{
-        const left=( (b.startMs-base)/total )*100, width=((b.endMs-b.startMs)/total)*100;
-        const seg=document.createElement('div'); seg.style.position='absolute'; seg.style.left=left+'%'; seg.style.width=width+'%'; seg.style.height='100%'; seg.style.background='#4b4bd6'; seg.style.borderRadius='6px';
-        seg.title = `${new Date(b.startMs).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} - ${new Date(b.endMs).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
-        bar.appendChild(seg);
-      });
-      wrap.appendChild(bar);
-    };
+  // Botões
+  $('btnPunch').onclick = async ()=>{
+    $('status').textContent = 'Registrando...';
+    try{
+      const d = new Date($('pDate').value || new Date());
+      const [hh,mm] = ($('pTime').value||'00:00').split(':').map(x=>parseInt(x||'0',10));
+      d.setHours(hh,mm,0,0);
+      await addPunchAuto({ at:d, note:$('note').value||'' });
+      $('status').textContent='Ponto registrado!';
+      $('note').value='';
+      await refreshType(); await refreshToday(); await refreshBankWidget();
+    }catch(e){ $('status').textContent='Erro: ' + (e?.message||e); }
+  };
 
-    // Autenticação/boot
-    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    mAuth.onAuthStateChanged(auth, async (user)=>{
-      if (!user){ location.href='login.html'; return; }
-      const ok = await isAdmin(user.uid);
-      $('gate').textContent = ok ? 'Admin OK' : 'Sem permissão';
-      show($('adminArea'), ok);
-      if (ok){
-        const profilesLoaded = hydrateProfiles();
-        await refreshProjects();
-        await loadDaily();
-        await loadMonth();
-        await profilesLoaded;
-      }
-    });
+  $('btnPause').onclick = async ()=>{
+    const st = await getStatus(auth.currentUser.uid);
+    if (!st.hasOpen) { alert('Você ainda não registrou a entrada.'); return; }
+    if (st.hasBreakOpen) await endPause({ note:'Fim da pausa' });
+    else await startPause({ note:'Início da pausa' });
+    await refreshType(); await refreshToday();
+  };
 
-    $('btnLoad').onclick = loadDaily;
-    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='login.html'; };
-  </script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
-    }
-  </script>
+  $('btnExport').onclick = async ()=>{
+    const u=auth.currentUser; if(!u) return;
+    const mISO = $('mExport').value || new Date().toISOString().slice(0,7);
+    const from = `${mISO}-01`, to = `${mISO}-31`;
+    const data = await (await import('./app.js')).exportUserDataJSON(u.uid, from, to);
+    const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `ponto-${mISO}-${u.uid}.json`; a.click();
+  };
+
+  $('btnLogout').onclick = async ()=>{
+    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+    await m.signOut(auth); location.href='login.html';
+  };
+
+  // login state
+  onUserChanged(async (user)=>{
+    if(!user){ location.href='login.html'; return; }
+    $('hello').textContent = `Olá, ${user.displayName||user.email||''}`;
+    await ensureRoleDoc(user.uid, user.displayName||'', user.email||'');
+
+    // link admin
+    const admin = await isAdmin(user.uid);
+    show($('adminLink'), admin);
+
+    nowToInputs();
+    await refreshType();
+    await refreshToday();
+    await refreshBankWidget();
+
+    // Admin também vê a área de batida
+    $('punchCard').classList.remove('hidden');
+  });
+</script>
 </body>
 </html>
