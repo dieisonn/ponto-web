@@ -8,8 +8,7 @@
   <meta name="theme-color" content="#4b4bd6">
   <link rel="icon" href="favicon.ico">
   <style>
-    :root{ --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --bd:#e6e8ef; --bg:#f6f7fb; --card:#fff;
-           --ok:#10b981; --warn:#f59e0b; --bad:#ef4444; }
+    :root{ --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --bd:#e6e8ef; --bg:#f6f7fb; --card:#fff; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444; }
     [data-theme="dark"]{ --bg:#0f1220; --ink:#eef2ff; --mut:#9aa3b2; --card:#12162a; --bd:#242b45; }
     *{box-sizing:border-box}
     body{margin:0; background:var(--bg); color:var(--ink); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
@@ -19,9 +18,7 @@
     .card{background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; margin:12px 0;}
     .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
     input,select,button{font-size:15px}
-    input[type=date],input[type=month],select{
-      border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:transparent; color:inherit;
-    }
+    input[type=date],input[type=month],select{ border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:transparent; color:inherit;}
     button{padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer}
     [data-theme="dark"] button{background:#141a33}
     .muted{color:var(--mut)} .hidden{display:none}
@@ -40,10 +37,9 @@
       </div>
     </div>
 
-    <div class="card"><b>Status:</b> <span id="gate">Verificando...</span> • <a href="admin.html">← Colaborador</a></div>
+    <div class="card"><b>Status:</b> <span id="gate">Verificando...</span> • <a href="index.html">← Colaborador</a></div>
 
     <div id="adminArea" class="hidden">
-
       <!-- Em jornada agora -->
       <div class="card">
         <div class="row"><h3 style="margin:0">Em jornada agora</h3>
@@ -89,142 +85,110 @@
         </table>
         <p class="muted" style="margin-top:6px">* 1.5× normal, 2.0× domingos/feriados.</p>
       </div>
-
     </div>
   </div>
 
 <script type="module">
+  // Guard: APENAS ADMIN entra aqui
   import * as core from './app.js';
   await core.initApp();
-
   const { auth, isAdmin,
           listPunchesByDayAllUsers, listPendingAdjustments,
-          approveAdjustment, rejectAdjustment,
-          listOpenShiftsAllUsers, getMonthReportForAllUsers,
-          monthReportsToCSV, msToHHMM } = core;
+          approveAdjustment, rejectAdjustment, listOpenShiftsAllUsers,
+          getMonthReportForAllUsers, monthReportsToCSV, msToHHMM } = core;
 
-  const $ = id => document.getElementById(id);
-  const show = (el,v)=> el.classList.toggle('hidden', !v);
+  const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+  mAuth.onAuthStateChanged(auth, async (user)=>{
+    if(!user) return location.replace('login.html');
+    const ok = await isAdmin(user.uid);
+    if(!ok) return location.replace('index.html');
+    // se ok, deixa a página seguir (o restante do script abaixo carrega os dados)
+    $('gate').textContent='Admin OK'; document.getElementById('adminArea').classList.remove('hidden');
+    await loadNow(); await loadDaily(); await loadAdjustments(); await loadReport();
+  });
+
+  const $=id=>document.getElementById(id);
+  const show=(el,v)=>el.classList.toggle('hidden',!v);
 
   // Tema
-  $('btnTheme').onclick = ()=> {
-    const root=document.documentElement;
-    root.setAttribute('data-theme', root.getAttribute('data-theme')==='dark'?'light':'dark');
-  };
+  $('btnTheme').onclick=()=>{ const root=document.documentElement; root.setAttribute('data-theme', root.getAttribute('data-theme')==='dark'?'light':'dark'); };
 
-  // Data defaults
-  const todayISO = new Date().toISOString().slice(0,10);
-  $('dayPicker').value = todayISO;
-  $('dayNow').value = todayISO;
-  $('mRep').value = todayISO.slice(0,7);
+  // Defaults
+  const todayISO=new Date().toISOString().slice(0,10);
+  $('dayPicker').value=todayISO; $('dayNow').value=todayISO; $('mRep').value=todayISO.slice(0,7);
 
   async function loadDaily(){
-    const day = $('dayPicker').value;
-    const rows = await listPunchesByDayAllUsers(day);
-    const tb = $('tbody'); tb.innerHTML='';
-    if (!rows.length){
-      const tr=document.createElement('tr'); tr.innerHTML='<td colspan="2" class="muted">Sem registros.</td>'; tb.appendChild(tr); return;
-    }
+    const day=$('dayPicker').value;
+    const rows=await listPunchesByDayAllUsers(day);
+    const tb=$('tbody'); tb.innerHTML='';
+    if(!rows.length){ const tr=document.createElement('tr'); tr.innerHTML='<td colspan="2" class="muted">Sem registros.</td>'; tb.appendChild(tr); return; }
     rows.forEach(r=>{
-      const d = r.at?.toDate ? r.at.toDate() : new Date(r.at||r.ts);
+      const d=r.at?.toDate? r.at.toDate(): new Date(r.at||r.ts);
       const tr=document.createElement('tr');
-      tr.innerHTML = `<td>${r.name||r.uid}</td>
-                      <td>${d.toLocaleString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${r.type})${r.note? ' — '+r.note:''}</td>`;
+      tr.innerHTML=`<td>${r.name||r.uid}</td>
+                    <td>${d.toLocaleString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${r.type})${r.note? ' — '+r.note:''}</td>`;
       tb.appendChild(tr);
     });
   }
 
   async function loadNow(){
-    const day = $('dayNow').value;
-    const list = await listOpenShiftsAllUsers(day);
-    const ul = $('ulNow'); ul.innerHTML='';
+    const day=$('dayNow').value;
+    const list=await listOpenShiftsAllUsers(day);
+    const ul=$('ulNow'); ul.innerHTML='';
     if(!list.length){ const li=document.createElement('li'); li.className='muted'; li.textContent='Ninguém em jornada.'; ul.appendChild(li); return; }
     list.forEach(x=>{
       const li=document.createElement('li');
       const h=Math.floor(x.elapsedMs/3600000), m=Math.floor((x.elapsedMs%3600000)/60000);
-      li.textContent = `${x.name} — em jornada há ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      li.textContent=`${x.name} — em jornada há ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       ul.appendChild(li);
     });
   }
 
   async function loadAdjustments(){
-    const pend = await listPendingAdjustments();
-    const tb = $('tbodyAdj'); tb.innerHTML='';
-    if (!pend.length){
-      const tr=document.createElement('tr'); tr.innerHTML='<td colspan="6" class="muted">Nenhum pedido pendente.</td>'; tb.appendChild(tr); return;
-    }
+    const pend=await listPendingAdjustments();
+    const tb=$('tbodyAdj'); tb.innerHTML='';
+    if(!pend.length){ const tr=document.createElement('tr'); tr.innerHTML='<td colspan="6" class="muted">Nenhum pedido pendente.</td>'; tb.appendChild(tr); return; }
     pend.forEach(r=>{
-      const d = r.tsWanted?.toDate ? r.tsWanted.toDate() : (r.tsWanted? new Date(r.tsWanted): null);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${r.email||r.uid}</td>
-                      <td>${r.action||'include'}</td>
-                      <td>${r.type||'-'}</td>
-                      <td>${d? d.toLocaleString('pt-BR'): '-'}</td>
-                      <td>${r.reason||''}</td>
-                      <td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
-      tr.querySelector('.ok').onclick = async ()=>{
-        await approveAdjustment(r, auth.currentUser.uid);
-        await loadAdjustments(); await loadDaily();
-      };
-      tr.querySelector('.no').onclick = async ()=>{
-        const why = prompt('Motivo (opcional):')||'';
-        await rejectAdjustment(r.id, auth.currentUser.uid, why);
-        await loadAdjustments();
-      };
+      const d=r.tsWanted?.toDate? r.tsWanted.toDate(): (r.tsWanted? new Date(r.tsWanted): null);
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${r.email||r.uid}</td>
+                    <td>${r.action||'include'}</td>
+                    <td>${r.type||'-'}</td>
+                    <td>${d? d.toLocaleString('pt-BR'): '-'}</td>
+                    <td>${r.reason||''}</td>
+                    <td><button class="ok">Aprovar</button> <button class="no">Rejeitar</button></td>`;
+      tr.querySelector('.ok').onclick=async()=>{ await approveAdjustment(r, auth.currentUser.uid); await loadAdjustments(); await loadDaily(); };
+      tr.querySelector('.no').onclick=async()=>{ const why=prompt('Motivo (opcional):')||''; await rejectAdjustment(r.id, auth.currentUser.uid, why); await loadAdjustments(); };
       tb.appendChild(tr);
     });
   }
 
   // Relatório
-  let cachedReps = [];
+  let cachedReps=[];
   async function loadReport(){
-    const m = $('mRep').value || new Date().toISOString().slice(0,7);
-    const reps = await getMonthReportForAllUsers(m);
-    cachedReps = reps;
-    const tb = $('tbodyRep'); tb.innerHTML='';
+    const m=$('mRep').value || new Date().toISOString().slice(0,7);
+    const reps=await getMonthReportForAllUsers(m);
+    cachedReps=reps;
+    const tb=$('tbodyRep'); tb.innerHTML='';
     if(!reps.length){ const tr=document.createElement('tr'); tr.innerHTML='<td colspan="8" class="muted">Sem dados no mês.</td>'; tb.appendChild(tr); return; }
     reps.forEach(r=>{
       const t=r.totals;
       const tr=document.createElement('tr');
-      tr.innerHTML = `<td>${r.name||r.uid}</td>
-        <td>${r.daily.length}</td>
-        <td>${msToHHMM(t.workedMs)}</td>
-        <td>${msToHHMM(t.requiredMs)}</td>
-        <td>${msToHHMM(t.creditMs)}</td>
-        <td>${msToHHMM(t.deficitMs)}</td>
-        <td>${msToHHMM(t.balanceMs)}</td>
-        <td>${msToHHMM(t.finalBalanceMs)}</td>`;
+      tr.innerHTML=`<td>${r.name||r.uid}</td>
+                    <td>${r.daily.length}</td>
+                    <td>${msToHHMM(t.workedMs)}</td>
+                    <td>${msToHHMM(t.requiredMs)}</td>
+                    <td>${msToHHMM(t.creditMs)}</td>
+                    <td>${msToHHMM(t.deficitMs)}</td>
+                    <td>${msToHHMM(t.balanceMs)}</td>
+                    <td>${msToHHMM(t.finalBalanceMs)}</td>`;
       tb.appendChild(tr);
     });
   }
-  $('btnCSV').onclick = ()=>{
-    if(!cachedReps.length) return alert('Gere o relatório primeiro.');
-    const csv = monthReportsToCSV(cachedReps);
-    const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=`ponto-relatorio-${($('mRep').value||'mes')}.csv`; a.click();
-  };
+  $('btnCSV').onclick=()=>{ if(!cachedReps.length) return alert('Gere o relatório primeiro.'); const csv=monthReportsToCSV(cachedReps); const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`ponto-relatorio-${($('mRep').value||'mes')}.csv`; a.click(); };
 
-  $('btnLoad').onclick = loadDaily;
-  $('btnAdj').onclick  = loadAdjustments;
-  $('btnRep').onclick  = loadReport;
-  $('btnNow').onclick  = loadNow;
-
-  $('btnLogout').onclick = async ()=>{
-    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-    await m.signOut(auth); location.href='login.html';
-  };
-
-  // Gate
-  const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
-  mAuth.onAuthStateChanged(auth, async (user)=>{
-    if (!user){ $('gate').textContent='Não logado'; show($('adminArea'), false); return; }
-    const ok = await isAdmin(user.uid);
-    $('gate').textContent = ok ? 'Admin OK' : 'Sem permissão';
-    show($('adminArea'), ok);
-    if (ok){ await loadNow(); await loadDaily(); await loadAdjustments(); await loadReport(); }
-    else location.href='admin.html';
-  });
+  $('btnLoad').onclick=loadDaily; $('btnAdj').onclick=loadAdjustments; $('btnRep').onclick=loadReport; $('btnNow').onclick=loadNow;
+  $('btnLogout').onclick=async()=>{ const x=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await x.signOut(auth); location.replace('login.html'); };
 </script>
 </body>
 </html>
