@@ -1,258 +1,116 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="light">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Marcação de Ponto</title>
+  <title>Ponto • Entrar</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="favicon.ico" sizes="any">
+  <meta name="theme-color" content="#4b4bd6">
+  <link rel="icon" href="favicon.ico">
   <style>
     :root{
-      --brand:#4b4bd6; --brand-600:#4646cc; --brand-400:#7575e6;
-      --ink:#1f2430; --mut:#637085; --bg:#f6f7fb; --card:#fff; --bd:#e6e8f0;
-      --ok:#1b7a3b; --bad:#b11;
+      --brand:#4b4bd6; --ink:#1f2330; --mut:#6b7280; --card:#fff; --bg:#f6f7fb; --bd:#e6e8ef;
     }
-    [data-theme="dark"]{
-      --bg:#0f1220; --card:#14172a; --ink:#e9ecff; --mut:#a7b0ca; --bd:#262a44;
-    }
-    html,body{ background:var(--bg); color:var(--ink); }
-    body{ font-family:system-ui,-apple-system, Segoe UI, Roboto, Arial; max-width:980px; margin:24px auto; padding:0 12px; }
-    h1{ margin:0 0 16px }
-    .card{ background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; margin:12px 0; box-shadow:0 2px 6px rgba(0,0,0,.05) }
-    .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
-    label{ font-weight:600; margin-right:8px }
-    input,button,select{ font-size:15px }
-    input[type=date],input[type=time],input[type=text],select{ border:1px solid var(--bd); border-radius:10px; padding:8px 10px; background:#fff }
-    [data-theme="dark"] input,[data-theme="dark"] select{ background:#0f1122; color:var(--ink); border-color:#2a2f55 }
-    button{ padding:10px 14px; border-radius:10px; border:1px solid var(--bd); background:#fff; cursor:pointer }
-    button.primary{ background:var(--brand); color:#fff; border-color:var(--brand) }
-    .muted{ color:var(--mut) }
-    .hidden{ display:none }
-    ul.clean{ margin:0; padding-left:20px }
-    .pill{ display:inline-block; border-radius:999px; padding:4px 10px; font-size:13px; }
-    .positive{ background:#e8f7ec; border:1px solid #c6ebd2; color:var(--ok) }
-    .negative{ background:#ffecec; border:1px solid #ffd2d2; color:var(--bad) }
-    .chip{ padding:6px 10px; border-radius:999px; background:#eef0ff; color:var(--brand); border:1px solid var(--brand-400); cursor:pointer }
-    .chip:hover{ background:#e3e6ff }
-    .alert{ background:#fff8e1; border:1px solid #ffe49c; color:#7a5a00; padding:10px 12px; border-radius:10px }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
+         background:var(--bg); color:var(--ink);}
+    .wrap{min-height:100dvh; display:grid; place-items:center; padding:24px;}
+    .panel{width:min(560px,94vw); background:var(--card); border:1px solid var(--bd);
+           border-radius:16px; padding:28px; box-shadow:0 10px 30px rgba(40,48,80,.06);}
+    h1{margin:0 0 4px; font-size:28px;}
+    p.small{color:var(--mut); margin:0 0 22px;}
+    .btn{display:flex; align-items:center; gap:10px; justify-content:center; width:100%;
+         padding:14px 16px; border-radius:12px; border:1px solid var(--bd); background:#fff;
+         cursor:pointer; font-weight:600;}
+    .btn:hover{border-color:#d5d9e6}
+    .btn.brand{background:var(--brand); border-color:var(--brand); color:#fff;}
+    .btn .ic{width:20px; height:20px}
+    .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
+    .tip{font-size:13px; color:var(--mut); text-align:center; margin-top:14px}
+    .foot{display:flex; justify-content:space-between; align-items:center; margin-top:18px; color:var(--mut); font-size:13px}
+    .switch{display:inline-flex; align-items:center; gap:8px; font-size:14px}
+    .switch input{accent-color:var(--brand)}
+    .brand{display:flex; align-items:center; gap:10px; margin-bottom:16px}
+    .badge{background:rgba(75,75,214,.08); color:#2b2bd8; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600}
+    .lang{margin-left:auto; border:1px solid var(--bd); border-radius:10px; padding:6px 8px; font:inherit}
   </style>
 </head>
 <body>
-  <div class="row" style="justify-content:space-between;align-items:center">
-    <h1>Marcação de Ponto</h1>
-    <div class="row">
-      <button id="btnTheme" class="chip">🌓 Tema</button>
-      <select id="langSel"><option value="pt">pt</option><option value="en">en</option></select>
-    </div>
-  </div>
+  <div class="wrap">
+    <div class="panel">
+      <div class="brand">
+        <img src="icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
+        <div style="font-weight:800; font-size:18px;">Ponto</div>
+        <span class="badge">beta</span>
+        <select id="lang" class="lang">
+          <option value="pt">pt</option><option value="en">en</option><option value="es">es</option>
+        </select>
+      </div>
 
-  <div id="hello" class="muted"></div>
+      <h1>Bem-vindo(a)</h1>
+      <p class="small">Faça login para registrar sua jornada e acessar seu banco de horas.</p>
 
-  <!-- Bater ponto -->
-  <div id="punchCard" class="card hidden" aria-label="Área de marcação de ponto">
-    <div class="row" style="justify-content:space-between;">
-      <h3 style="margin:0">Bater ponto</h3>
-      <span class="pill" id="pillType">Entrada</span>
-    </div>
+      <button id="btnGoogle" class="btn">
+        <img class="ic" src="google.svg" alt="">
+        Entrar com Google
+      </button>
 
-    <div class="row" style="margin-top:8px">
-      <label for="pDate">Data:</label><input type="date" id="pDate" />
-      <label for="pTime">Hora:</label><input type="time" id="pTime" step="60" />
-      <label>Projeto:</label><select id="projSel"><option value="">(nenhum)</option></select>
-    </div>
+      <div class="row">
+        <button id="btnAnon" class="btn" title="Somente para teste/demonstração">Entrar como demo</button>
+        <a href="https://accounts.google.com/SignUp" class="btn" style="text-decoration:none" target="_blank" rel="noopener">Criar conta Google</a>
+      </div>
 
-    <div style="margin-top:8px">
-      <label for="note">Motivo/Observação</label>
-      <input id="note" type="text" placeholder="Opcional" aria-label="Motivo ou observação" />
-      <div class="row" style="gap:8px;margin-top:6px">
-        <span class="chip">Home office</span>
-        <span class="chip">Visita</span>
-        <span class="chip">Cliente</span>
-        <span class="chip">Reunião</span>
+      <p id="status" class="tip"></p>
+
+      <div class="foot">
+        <label class="switch"><input id="install" type="checkbox"> instalar como app</label>
+        <span>© <script>document.write(new Date().getFullYear())</script></span>
       </div>
     </div>
-
-    <div class="row" style="margin-top:12px">
-      <button id="btnPunch" class="primary">Registrar</button>
-      <button id="btnPauseStart">Iniciar Pausa</button>
-      <button id="btnPauseEnd">Encerrar Pausa</button>
-      <button id="btnLogout" class="right">Sair</button>
-    </div>
-
-    <p id="status" class="muted" style="margin-top:10px"></p>
-    <div id="alertBox" class="alert hidden" role="alert"></div>
   </div>
 
-  <!-- KPIs / Banco de horas -->
-  <div class="card">
-    <div class="row" style="gap:16px">
-      <span>Hoje: <b id="kToday">00:00</b></span>
-      <span>Banco (mês): <span id="bankBadge" class="pill">--:--</span></span>
-      <span class="right"><a href="index.html" id="adminLink" class="muted">Painel Admin</a></span>
-    </div>
-    <p id="bankHint" class="muted" style="margin-top:6px">Créditos: 1.5× normal, 2.0× domingos/feriados. Jornada diária configurável pelo admin.</p>
-  </div>
+<script type="module">
+  import { initApp, auth, ensureRoleDoc, isAdmin } from './app.js';
+  await initApp();
 
-  <!-- Meus dados (LGPD) -->
-  <div class="card">
-    <h3 style="margin:0 0 8px 0">Baixar meus dados (JSON)</h3>
-    <div class="row">
-      <label>Mês:</label><input type="month" id="lgMonth" />
-      <button id="btnLGPD">Baixar</button>
-    </div>
-  </div>
+  // PWA
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+  }
 
-  <!-- Registros do dia -->
-  <div class="card">
-    <h3 style="margin-top:0">Registros de hoje</h3>
-    <ul id="listToday" class="clean"></ul>
-  </div>
+  const $ = s => document.querySelector(s);
+  const status = $('#status');
 
-  <script type="module">
-    import {
-      initApp, auth, onUserChanged, ensureRoleDoc, isAdmin,
-      addPunchAuto, listPunchesByDayForUser, getNextTypeFor, getStatus,
-      computeDailyWorkMs, msToHHMM, requestAdjustment,
-      getMonthReportForUser, ensureStatus, startPause, endPause,
-      listProjects, exportUserDataJSON
-    } from './app.js';
+  const setLoading = (t)=>{ status.textContent = t || ''; };
 
-    await initApp();
-    const $ = id => document.getElementById(id);
-    const show = (el,v) => el.classList.toggle('hidden', !v);
-    const todayISO = (d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('btnGoogle').onclick = async ()=>{
+    setLoading('Abrindo Google...');
+    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+    const prov = new m.GoogleAuthProvider();
+    prov.setCustomParameters({ prompt:'select_account' });
+    try{
+      const r = await m.signInWithPopup(auth, prov);
+      await ensureRoleDoc(r.user.uid, r.user.displayName||'', r.user.email||'');
+      const admin = await isAdmin(r.user.uid);
+      location.href = admin ? 'index.html' : 'admin.html';
+    }catch(e){ setLoading('Falha no login: '+(e?.message||e)); }
+  };
 
-    // tema / idioma
-    const theme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    $('btnTheme').onclick = ()=>{
-      const cur = document.documentElement.getAttribute('data-theme');
-      const nxt = cur==='light'?'dark':'light';
-      document.documentElement.setAttribute('data-theme', nxt);
-      localStorage.setItem('theme', nxt);
-    };
-    $('langSel').value = localStorage.getItem('lang') || 'pt';
-    $('langSel').onchange = ()=> localStorage.setItem('lang', $('langSel').value);
+  document.getElementById('btnAnon').onclick = async ()=>{
+    const m = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+    await m.signInAnonymously(auth);
+    setLoading('Entrou em modo demonstração.');
+    location.href = 'admin.html';
+  };
 
-    function nowToInputs(){
-      const n = new Date();
-      $('pDate').value = todayISO(n);
-      $('pTime').value = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
-      $('lgMonth').value = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
-    }
-
-    async function refreshType(){
-      const user = auth.currentUser; if(!user) return;
-      await ensureStatus(user.uid);
-      const next = await getNextTypeFor(user.uid);
-      $('pillType').textContent = (next==='entrada' ? 'Entrada' : next==='saida' ? 'Saída' : 'Fim Pausa');
-      $('btnPunch').textContent = 'Registrar ' + (next==='entrada' ? 'Entrada' : next==='saida' ? 'Saída' : 'Fim Pausa');
-
-      const st = await getStatus(user.uid);
-      show($('btnPauseStart'), st.hasOpen && !st.hasBreakOpen);
-      show($('btnPauseEnd'), st.hasOpen && st.hasBreakOpen);
-    }
-
-    async function refreshToday(){
-      const user = auth.currentUser; if (!user) return;
-      const arr = await listPunchesByDayForUser(user.uid, todayISO());
-      const ul = $('listToday'); ul.innerHTML = '';
-      if (!arr.length){
-        const li=document.createElement('li'); li.className='muted'; li.textContent='Nenhum registro hoje.'; ul.appendChild(li);
-      } else {
-        for (const p of arr){
-          const when = p.at?.toDate ? p.at.toDate() : new Date(p.at||p.ts);
-          const li = document.createElement('li'); li.style.marginBottom='8px';
-          li.textContent = `${when.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} (${p.type}${p.projId? ', '+p.projId:''})` + (p.note ? ` — ${p.note}`:'');
-          ul.appendChild(li);
-        }
-      }
-      $('kToday').textContent = msToHHMM(computeDailyWorkMs(arr));
-    }
-
-    async function refreshBank(){
-      const user = auth.currentUser; if(!user) return;
-      const rep = await getMonthReportForUser(user.uid);
-      const saldo = rep.totals.finalBalanceMs;
-      const el = $('bankBadge');
-      el.textContent = (saldo>=0?'+':'') + msToHHMM(saldo);
-      el.className = 'pill ' + (saldo>=0?'positive':'negative');
-    }
-
-    async function checkAlerts(){
-      const user = auth.currentUser; if(!user) return;
-      const st = await getStatus(user.uid);
-      const box = $('alertBox');
-      if (st.hasOpen && !st.hasBreakOpen){
-        const arr = await listPunchesByDayForUser(user.uid, todayISO());
-        const last = arr[arr.length-1];
-        if (last && (last.type==='entrada' || last.type==='fim_pausa')){
-          const elapsed = Date.now() - (last.at?.toDate ? last.at.toDate().getTime() : new Date(last.at||last.ts).getTime());
-          if (elapsed > 6*3600000){ box.textContent = 'Você está em jornada há mais de 6 horas. Não esqueça a pausa.'; show(box, true); return; }
-        }
-      }
-      show(box, false);
-    }
-
-    async function refreshProjects(){
-      const ps = await listProjects();
-      const sel = $('projSel'); sel.innerHTML='<option value="">(nenhum)</option>';
-      ps.forEach(p=> sel.add(new Option(p.name, p.id)));
-    }
-
-    // ações
-    $('btnPunch').onclick = async ()=>{
-      $('status').textContent = 'Registrando...';
-      try{
-        const [yy,mm,dd] = ($('pDate').value || todayISO()).split('-').map(Number);
-        const [hh,min]   = ($('pTime').value || '00:00').split(':').map(x=>parseInt(x||'0',10));
-        const d = new Date(yy,(mm||1)-1,dd||1,hh||0,min||0,0,0);
-
-        await addPunchAuto({ at:d, note:$('note').value||'', projId: $('projSel').value || null });
-        $('status').textContent='Ponto registrado!';
-        $('note').value='';
-        await refreshType(); await refreshToday(); await refreshBank(); await checkAlerts();
-      }catch(e){
-        $('status').textContent='Erro: ' + (e?.message||e);
-      }
-    };
-    $('btnPauseStart').onclick = async ()=>{ try{ await startPause({}); await refreshType(); await refreshToday(); await checkAlerts(); }catch(e){ alert('Erro: '+(e?.message||e)); } };
-    $('btnPauseEnd').onclick   = async ()=>{ try{ await endPause({});   await refreshType(); await refreshToday(); await checkAlerts(); }catch(e){ alert('Erro: '+(e?.message||e)); } };
-    $('btnLogout').onclick = async ()=>{ const m=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'); await m.signOut(auth); location.href='login.html'; };
-
-    document.addEventListener('click', (ev)=>{ if (ev.target.classList.contains('chip')){ $('note').value = ($('note').value? $('note').value+'; ':'') + ev.target.textContent; } });
-
-    // LGPD download
-    $('btnLGPD').onclick = async ()=>{
-      const user=auth.currentUser; if(!user) return;
-      const m=$('lgMonth').value; const from=`${m}-01`, to=`${m}-31`;
-      const data = await exportUserDataJSON(user.uid, from, to);
-      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a=document.createElement('a'); a.href=url; a.download=`meus_dados_${m}.json`; a.click();
-      URL.revokeObjectURL(url);
-    };
-
-    onUserChanged(async (user)=>{
-      if (!user){ location.href='login.html'; return; }
-      $('hello').textContent = `Olá, ${user.displayName||user.email||''}`;
-      await ensureRoleDoc(user.uid, user.displayName||'', user.email||'');
-      await ensureStatus(user.uid);
-      nowToInputs();
-      await refreshProjects();
-      await refreshType();
-      await refreshToday();
-      await refreshBank();
-      await checkAlerts();
-
-      const admin = await isAdmin(user.uid);
-      document.getElementById('adminLink').classList.toggle('hidden', !admin);
-      document.getElementById('punchCard').classList.toggle('hidden', !!admin);
-    });
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
-    }
-  </script>
+  // Install switch
+  const chk = document.getElementById('install');
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt = e; chk.disabled=false; });
+  chk.onchange = async ()=>{
+    if (deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; }
+    chk.checked = false;
+  };
+</script>
 </body>
 </html>
