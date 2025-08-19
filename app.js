@@ -1,11 +1,18 @@
-// app.js — Ponto completo com: escalas, pausas nomeadas, projetos, compensações,
-// relatório (heatmap/timeline helpers), LGPD export, PWA hooks, App Check, auditoria,
-// gestor/departamentos e trava de período (balances.locked).
+// app.js — núcleo do Ponto
+// - login/roles
+// - marcações com espelho (users/*/punches e punches/{uid}/{period})
+// - status de jornada/pausa
+// - projetos
+// - escalas
+// - compensações
+// - relatório mensal + banco de horas (1.5× normal; 2.0× domingo/feriado)
+// - export LGPD
+// - utilitários de UI
 
 export let app, auth, db;
 let boot;
 
-const APP_CHECK_SITE_KEY = "<SEU_RECAPTCHA_V3_SITE_KEY>"; // opcional: App Check
+const APP_CHECK_SITE_KEY = "<SEU_RECAPTCHA_V3_SITE_KEY>"; // opcional
 
 export async function initApp(){
   if (boot) return boot;
@@ -24,7 +31,7 @@ export async function initApp(){
 
     app = appModule.initializeApp(cfg);
 
-    // App Check (se chave fornecida)
+    // App Check (se houver chave)
     try {
       if (APP_CHECK_SITE_KEY && APP_CHECK_SITE_KEY !== "<SEU_RECAPTCHA_V3_SITE_KEY>") {
         const appCheckModule = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js');
@@ -33,7 +40,7 @@ export async function initApp(){
           isTokenAutoRefreshEnabled: true
         });
       }
-    } catch(e){ console.warn('App Check init falhou (seguindo sem):', e); }
+    } catch(e){ console.warn('AppCheck: prosseguindo sem.', e); }
 
     auth = authModule.getAuth(app);
     db   = fsModule.getFirestore(app);
@@ -43,26 +50,19 @@ export async function initApp(){
 }
 
 /* ===== Utils ===== */
-function dayISOfromDate(d){ const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`; }
-function monthISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-function parseLocalDateISO(dayISO){ const [y,m,d] = String(dayISO).split('-').map(Number); return new Date(y,(m||1)-1,d||1,0,0,0,0); }
-function yyyymmLocal(d){ return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}`; }
-function monthPeriodFromISO(mISO){ const [y,m]=mISO.split('-').map(Number); return `${y}${String(m).padStart(2,'0')}`; }
+const pad2 = n=>String(n).padStart(2,'0');
+function dayISOfromDate(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function monthISO(d=new Date()){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`; }
+function parseLocalDateISO(s){ const [y,m,d]=String(s).split('-').map(Number); return new Date(y,(m||1)-1,(d||1),0,0,0,0); }
+function yyyymmLocal(d){ return `${d.getFullYear()}${pad2(d.getMonth()+1)}`; }
+function periodFromMonthISO(mISO){ const [y,m]=mISO.split('-').map(Number); return `${y}${pad2(m)}`; }
 function prevMonthISO(mISO){ const [y,m]=mISO.split('-').map(Number); const d=new Date(y,m-2,1); return monthISO(d); }
 function millisOf(x){ if(!x) return 0; if(x.toMillis) return x.toMillis(); if(x.toDate) return x.toDate().getTime(); return new Date(x).getTime(); }
-export function msToHHMM(ms){
-  const sign=ms<0?-1:1; ms=Math.abs(ms);
-  const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
-  const s=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  return sign<0?`-${s}`:s;
-}
-function hhmmToMin(s){
-  const [h, m] = String(s || '0:0').split(':').map(x => parseInt(x || '0', 10));
-  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
-}
+export function msToHHMM(ms){ const sign=ms<0?-1:1; ms=Math.abs(ms); const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000); const s=`${pad2(h)}:${pad2(m)}`; return sign<0?`-${s}`:s; }
+function hhmmToMin(s){ const [h,m] = String(s||'0:0').split(':').map(x=>parseInt(x||'0',10)); return (isNaN(h)?0:h)*60 + (isNaN(m)?0:m); }
 const ROUND5 = 5*60*1000;
 
-/* ===== Auth / perfis ===== */
+/* ===== Auth / roles ===== */
 export async function onUserChanged(cb){ await initApp(); (await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js')).onAuthStateChanged(auth, cb); }
 export async function ensureRoleDoc(uid, name, email){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
@@ -73,8 +73,9 @@ export async function ensureRoleDoc(uid, name, email){
 export async function isAdmin(uid){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); const s=await fs.getDoc(fs.doc(db,'roles',uid)); return s.exists() && s.data()?.role==='admin'; }
 export async function listAllProfiles(){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); const s=await fs.getDocs(fs.collection(db,'roles')); return s.docs.map(d=>({ uid:d.id, ...(d.data()||{}) })); }
 export async function setRequiredDaily(uid, hhmm){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); await fs.setDoc(fs.doc(db,'roles',uid),{requiredDaily:hhmm},{merge:true}); }
+function labelFromProfile(p){ return (p?.name && p.name.trim()) ? p.name.trim() : (p?.email ? p.email.split('@')[0] : p?.uid || ''); }
 
-/* ===== Status de jornada ===== */
+/* ===== Status ===== */
 export async function ensureStatus(uid){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const ref=fs.doc(db,`users/${uid}/meta/status`); const s=await fs.getDoc(ref);
@@ -87,20 +88,13 @@ export async function getStatus(uid){
 }
 
 /* ===== Projetos ===== */
-export async function listProjects(){
-  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const s=await fs.getDocs(fs.collection(db,'projects')); return s.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
-}
-export async function addProject(name){
-  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  await fs.addDoc(fs.collection(db,'projects'),{ name });
-}
+export async function listProjects(){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); const s=await fs.getDocs(fs.collection(db,'projects')); return s.docs.map(d=>({ id:d.id, ...(d.data()||{}) })); }
+export async function addProject(name){ await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js'); await fs.addDoc(fs.collection(db,'projects'),{ name }); }
 
-/* ===== Escalas/Turnos ===== */
-// schedules/{uid}/{YYYYMM}/days/{YYYY-MM-DD} { start:"09:00", end:"18:00", breakMin:60 }
+/* ===== Escalas ===== */
 export async function getScheduleMonth(uid, monthISOParam){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const per = monthPeriodFromISO(monthISOParam||monthISO());
+  const per = periodFromMonthISO(monthISOParam||monthISO());
   const s=await fs.getDocs(fs.collection(db,'schedules', uid, per, 'days'));
   const map=new Map(); s.forEach(d=>map.set(d.id, d.data())); return map;
 }
@@ -111,9 +105,7 @@ export async function setScheduleDay(uid, dayISO, start, end, breakMin){
 }
 function requiredMsFromScheduleOrUser(scheduleMap, dayISO, reqDailyMin){
   const sc = scheduleMap.get(dayISO);
-  if(!sc || !sc.start || !sc.end){
-    return reqDailyMin*60*1000;
-  }
+  if(!sc || !sc.start || !sc.end) return reqDailyMin*60*1000;
   const [sh, sm] = sc.start.split(':').map(Number);
   const [eh, em] = sc.end.split(':').map(Number);
   const d=parseLocalDateISO(dayISO); const a=new Date(d), b=new Date(d);
@@ -123,7 +115,6 @@ function requiredMsFromScheduleOrUser(scheduleMap, dayISO, reqDailyMin){
 }
 
 /* ===== Compensações ===== */
-// compensations/{uid}/{autoId} { date:"YYYY-MM-DD", hours:"04:00", reason }
 export async function addCompensation(uid, dateISO, hoursHHMM, reason){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   await fs.addDoc(fs.collection(db,'compensations', uid), { date: dateISO, hours: hoursHHMM, reason: reason||'', createdAt: fs.Timestamp.now() });
@@ -135,7 +126,7 @@ export async function listCompensationsInMonth(uid, monthISOParam){
   return s.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
 }
 
-/* ===== Escrita das batidas (dupla escrita + status + auditoria) ===== */
+/* ===== Escrita das batidas ===== */
 async function writePunch({ uid, type, atDate, note, projId }){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const dayISO = dayISOfromDate(atDate); const period = yyyymmLocal(parseLocalDateISO(dayISO));
@@ -166,7 +157,7 @@ async function writePunch({ uid, type, atDate, note, projId }){
 
   batch.set(stRef, st, { merge:true });
 
-  // auditoria
+  // log de auditoria
   batch.set(fs.doc(fs.collection(db,'audit')), {
     actorUid: uid, action: `punch:${type}`, day: dayISO, at: data.at, createdAt: fs.Timestamp.now(), meta: { projId: projId||null }
   });
@@ -194,8 +185,6 @@ export async function endPause({ at, note='' }){
 export async function addExplicit({ at, type, note='', uid, projId=null }){
   await writePunch({ uid, type, atDate: at instanceof Date ? at : new Date(), note, projId });
 }
-
-/* ===== Forçar saída (admin) ===== */
 export async function forceCloseNow(uid, note='Encerrado pelo admin'){
   await writePunch({ uid, type:'saida', atDate:new Date(), note });
 }
@@ -216,10 +205,11 @@ export async function listPunchesByDayForUser(uid, dayISO){
 }
 export async function listPunchesByDayAllUsers(dayISO){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const roles = await listAllProfiles(); const rmap=Object.fromEntries(roles.map(r=>[r.uid,r]));
+  const roles = await listAllProfiles(); const rmap = Object.fromEntries(roles.map(r=>[r.uid, r]));
   const q=fs.query(fs.collectionGroup(db,'punches'), fs.where('day','==',dayISO));
   const s=await fs.getDocs(q);
   let list=s.docs.map(d=>d.data());
+
   if(!list.length){ // legado
     list=[];
     const period=yyyymmLocal(parseLocalDateISO(dayISO));
@@ -229,10 +219,8 @@ export async function listPunchesByDayAllUsers(dayISO){
     }
   }
   list.sort((a,b)=> millisOf(a.at||a.ts) - millisOf(b.at||b.ts));
-  return list.map(x=>({ ...x, name: rmap[x.uid]?.name || '' }));
+  return list.map(x=>({ ...x, name: labelFromProfile(rmap[x.uid]) || x.uid }));
 }
-
-/* ===== Em jornada agora ===== */
 export async function listOpenShiftsAllUsers(dayISO){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const roles=await listAllProfiles(); const now=Date.now(); const out=[];
@@ -242,69 +230,13 @@ export async function listOpenShiftsAllUsers(dayISO){
       const arr=await listPunchesByDayForUser(r.uid, dayISO);
       const last=arr[arr.length-1];
       if(last && (last.type==='entrada' || last.type==='fim_pausa')){
-        const since=millisOf(last.at||last.ts); out.push({ uid:r.uid, name:r.name||r.uid, since, elapsedMs:Math.max(0,now-since) });
+        const since=millisOf(last.at||last.ts);
+        out.push({ uid:r.uid, name: labelFromProfile(r) || r.uid, since, elapsedMs:Math.max(0,now-since) });
       }
     }
   }
   out.sort((a,b)=> b.elapsedMs - a.elapsedMs);
   return out;
-}
-
-/* ===== Ajustes ===== */
-export async function requestAdjustment({ dateISO, timeHHMM, type, reason, action, targetPath }){
-  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const user=auth.currentUser; if(!user) throw new Error('Não autenticado');
-  let tsWanted=null;
-  if(!action || action==='include'){
-    const [hh,mm]=(timeHHMM||'00:00').split(':').map(x=>parseInt(x||'0',10));
-    const d=parseLocalDateISO(dateISO); d.setHours(hh,mm,0,0);
-    tsWanted=fs.Timestamp.fromDate(d);
-  }
-  const ref=await fs.addDoc(fs.collection(db,'adjust_requests'), {
-    uid:user.uid, email:user.email||'', type:type||null, reason:reason||'',
-    action:action||'include', targetPath:targetPath||null, tsWanted:tsWanted,
-    status:'pending', createdAt:fs.Timestamp.now()
-  });
-  await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:user.uid, action:'adjust:create', targetId:ref.id, createdAt:fs.Timestamp.now() });
-}
-export async function listPendingAdjustments(){
-  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const q=fs.query(fs.collection(db,'adjust_requests'), fs.where('status','==','pending'), fs.orderBy('createdAt','asc'));
-  const s=await fs.getDocs(q); return s.docs.map(d=>({ id:d.id, ...d.data() }));
-}
-export async function approveAdjustment(req, adminUid){
-  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  if (req.action==='delete' && req.targetPath){
-    const docRef = fs.doc(db, req.targetPath); const snap=await fs.getDoc(docRef); const data = snap.exists()? snap.data(): null;
-    if (snap.exists()) await fs.deleteDoc(docRef);
-    if (data){
-      const atMs = millisOf(data.at||data.ts);
-      if (req.targetPath.startsWith('users/')) {
-        const period = yyyymmLocal(parseLocalDateISO(data.day));
-        const q = fs.query(fs.collection(db,'punches',data.uid,period), fs.where('day','==',data.day));
-        const s = await fs.getDocs(q);
-        for(const d of s.docs){ const x=d.data(); if (x.type===data.type && millisOf(x.at||x.ts)===atMs) await fs.deleteDoc(d.ref); }
-      } else if (req.targetPath.startsWith('punches/')) {
-        const q = fs.query(fs.collectionGroup(db,'punches'), fs.where('uid','==',data.uid), fs.where('day','==',data.day));
-        const s = await fs.getDocs(q);
-        for(const d of s.docs){ const x=d.data(); if (x.type===data.type && millisOf(x.at||x.ts)===atMs) await fs.deleteDoc(d.ref); }
-      }
-    }
-  } else {
-    const d = req.tsWanted?.toDate ? req.tsWanted.toDate() : new Date(req.tsWanted);
-    const dayISO = dayISOfromDate(d);
-    const period = yyyymmLocal(parseLocalDateISO(dayISO));
-    const data = { ts: fs.Timestamp.now(), at: req.tsWanted, day: dayISO, period, email: req.email || '', uid: req.uid, type: req.type || 'entrada', note: 'Ajuste aprovado (admin)' };
-    await fs.setDoc(fs.doc(fs.collection(db,`users/${req.uid}/punches`)), data);
-    await fs.setDoc(fs.doc(fs.collection(db,'punches',req.uid,period)), data);
-  }
-  await fs.updateDoc(fs.doc(db,'adjust_requests',req.id), { status:'approved', resolvedAt:fs.Timestamp.now(), resolvedBy:adminUid });
-  await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:adminUid, action:'adjust:approve', targetId:req.id, createdAt:fs.Timestamp.now() });
-}
-export async function rejectAdjustment(reqId, adminUid, reason){
-  await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  await fs.updateDoc(fs.doc(db,'adjust_requests',reqId),{ status:'rejected', resolvedAt:fs.Timestamp.now(), resolvedBy:adminUid, adminNote:reason||'' });
-  await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:adminUid, action:'adjust:reject', targetId:reqId, createdAt:fs.Timestamp.now(), meta:{reason:reason||''} });
 }
 
 /* ===== Feriados ===== */
@@ -342,7 +274,7 @@ function computeDailyAdjustedMs(punchesAsc){
     const singleBlock = types.length===2 && types[0]==='entrada' && types[1]==='saida';
     if (singleBlock){
       const dur = millisOf(punchesAsc[1].at||punchesAsc[1].ts) - millisOf(punchesAsc[0].at||punchesAsc[0].ts);
-      if (dur > 6*3600000) return worked - 60*60*1000;
+      if (dur > 6*3600000) return worked - 60*60*1000; // abate 1h de almoço
     }
   }
   return worked;
@@ -351,11 +283,11 @@ function computeDailyAdjustedMs(punchesAsc){
 /* ===== Balances ===== */
 export async function getSavedBalance(uid, monthISOParam){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  const s=await fs.getDoc(fs.doc(db,'balances',uid,monthPeriodFromISO(monthISOParam))); return s.exists()? (s.data().balanceMs||0) : 0;
+  const s=await fs.getDoc(fs.doc(db,'balances',uid,periodFromMonthISO(monthISOParam))); return s.exists()? (s.data().balanceMs||0) : 0;
 }
 export async function saveMonthBalance(uid, monthISOParam, balanceMs, lock=true){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
-  await fs.setDoc(fs.doc(db,'balances',uid,monthPeriodFromISO(monthISOParam)),{balanceMs, locked:!!lock, savedAt:fs.Timestamp.now()},{merge:true});
+  await fs.setDoc(fs.doc(db,'balances',uid,periodFromMonthISO(monthISOParam)),{balanceMs, locked:!!lock, savedAt:fs.Timestamp.now()},{merge:true});
   await fs.setDoc(fs.doc(fs.collection(db,'audit')), { actorUid:(auth.currentUser?.uid||'admin'), action:'balance:close', targetId:`${uid}:${monthISOParam}`, createdAt:fs.Timestamp.now(), meta:{balanceMs, lock} });
 }
 
@@ -366,7 +298,7 @@ export async function getMonthReportForUser(uid, monthISOParam, reqDailyMinParam
   const reqDailyMin = typeof reqDailyMinParam==='number' ? reqDailyMinParam : hhmmToMin(role.data()?.requiredDaily || '08:00');
 
   const monthISOv = monthISOParam || monthISO();
-  const periodStr = monthPeriodFromISO(monthISOv);
+  const periodStr = periodFromMonthISO(monthISOv);
   const holidays = await getHolidaySet();
   const scheduleMap = await getScheduleMonth(uid, monthISOv);
   const comps = await listCompensationsInMonth(uid, monthISOv);
@@ -422,7 +354,7 @@ export async function getMonthReportForUser(uid, monthISOParam, reqDailyMinParam
     prevBalanceMs: prevBalance,
     finalBalanceMs: prevBalance + (creditMs - deficitMs)
   };
-  return { uid, name: role.data()?.name||'', email: role.data()?.email||'', monthISO:monthISOv, reqDailyMin, totals, daily };
+  return { uid, name: labelFromProfile(role.data()||{uid}), email: role.data()?.email||'', monthISO:monthISOv, reqDailyMin, totals, daily };
 }
 export async function getMonthReportForAllUsers(monthISOParam, reqDailyMin){
   const profiles=await listAllProfiles(); const reps=[];
@@ -447,7 +379,7 @@ export function monthReportsToAOA(reps){
   return aoa;
 }
 
-/* ===== LGPD: exportar dados pessoais ===== */
+/* ===== LGPD ===== */
 export async function exportUserDataJSON(uid, fromISO, toISO){
   await initApp(); const fs=await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
   const q=fs.query(fs.collectionGroup(db,'punches'), fs.where('uid','==',uid), fs.where('day','>=', fromISO), fs.where('day','<=', toISO));
@@ -459,7 +391,7 @@ export async function exportUserDataJSON(uid, fromISO, toISO){
   return { uid, range:{ fromISO, toISO }, punches, adjustments, compensations, generatedAt: new Date().toISOString() };
 }
 
-/* ===== UI helpers: Heatmap & Timeline (dados) ===== */
+/* ===== UI helpers ===== */
 export function buildHeatmapGrid(reps){
   const byUser = [];
   for(const r of reps){
@@ -488,7 +420,7 @@ export function buildTimeline(dayArr){
   return blocks;
 }
 
-/* ===== Tipo seguinte (para rótulos) ===== */
+/* ===== Próximo tipo (rótulos) ===== */
 export async function getNextTypeFor(uid){
   const st = await getStatus(uid);
   return !st.hasOpen ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida');
