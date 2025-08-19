@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Entrar — Ponto</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <meta name="theme-color" content="#4b4bd6" />
+  <style>
+    :root{
+      --brand:#4b4bd6; --brand-600:#4343c6; --brand-700:#3b3bb6; --brand-200:#c9caf8;
+      --ink:#1f2430; --mut:#6b7280; --ok:#1b7a3b; --bad:#b11;
+      --bg:#f6f7fb; --card:#ffffffee; --bd:#e6e8f0;
+      --shadow: 0 20px 35px rgba(75,75,214,.18), 0 2px 10px rgba(0,0,0,.05);
+    }
+    [data-theme="dark"]{
+      --bg:#0e1120; --card:#161a2df2; --ink:#e9ecff; --mut:#a7b0ca; --bd:#283058;
+      --shadow: 0 20px 35px rgba(12,14,34,.6), 0 2px 10px rgba(0,0,0,.45);
+    }
+
+    /* page */
+    html,body{ height:100%; }
+    body{
+      margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      color:var(--ink); background: radial-gradient(1200px 600px at 10% -10%, #e9eaff 0, transparent 50%),
+                         radial-gradient(900px 500px at 110% 10%, #e9eaff 0, transparent 40%),
+                         var(--bg);
+      display:grid; place-items:center; padding:24px;
+    }
+
+    .wrap{
+      width:min(860px, 96vw);
+      display:grid; grid-template-columns: 1.15fr 1fr; gap:0;
+      background: var(--card);
+      border:1px solid var(--bd);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    @media (max-width: 840px){ .wrap{ grid-template-columns: 1fr; } }
+
+    /* brand panel */
+    .brand{
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,0) 40%),
+        radial-gradient(800px 600px at -20% -20%, #7a7af2 0 20%, transparent 60%),
+        radial-gradient(600px 400px at 130% 30%, #4b4bd6 0 30%, transparent 70%),
+        #5858e6;
+      color:#fff;
+      padding:36px 28px;
+      display:flex; flex-direction:column; justify-content:space-between;
+      position:relative;
+    }
+    .brand .logo{
+      display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.2px;
+    }
+    .logo .dot{
+      width:36px; height:36px; border-radius:50%;
+      background:#fff; display:grid; place-items:center; color:#4b4bd6;
+      box-shadow:0 6px 16px rgba(0,0,0,.12);
+    }
+    .brand h2{ margin:8px 0 6px; font-size:28px }
+    .brand p{ margin:0; opacity:.92 }
+    .brand .foot{ font-size:12px; opacity:.85; margin-top:24px }
+    .badge{
+      display:inline-flex; gap:8px; align-items:center;
+      background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25);
+      padding:6px 10px; border-radius:999px; font-size:12px;
+    }
+
+    /* form panel */
+    .panel{ padding:32px; position:relative }
+    .topbar{ display:flex; align-items:center; gap:10px; }
+    .topbar .space{ flex:1 }
+    .chip{ border:1px solid var(--bd); background:#fff; color:var(--ink);
+           padding:8px 10px; border-radius:10px; cursor:pointer }
+    [data-theme="dark"] .chip{ background:#10122a }
+    .seg{
+      display:inline-grid; grid-template-columns:1fr 1fr; border:1px solid var(--bd); border-radius:12px; overflow:hidden;
+    }
+    .seg button{ border:0; padding:10px 12px; cursor:pointer; background:transparent; color:var(--mut) }
+    .seg button.active{ background:var(--brand); color:#fff }
+
+    h1{ margin:18px 0 6px; font-size:26px }
+    .muted{ color:var(--mut) }
+
+    form{ display:grid; gap:12px; margin-top:14px }
+    .row{ display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
+    .row3{ display:grid; gap:12px; grid-template-columns: 1fr 1fr 1fr; }
+    @media (max-width: 520px){ .row,.row3{ grid-template-columns:1fr } }
+
+    label{ font-size:13px; color:var(--mut) }
+    .field{ display:flex; flex-direction:column; gap:6px }
+    .control{
+      display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--bd);
+      border-radius:12px; padding:10px 12px;
+    }
+    [data-theme="dark"] .control{ background:#0f1122 }
+    .control input{
+      border:0; outline:0; width:100%; font-size:15px; background:transparent; color:inherit;
+    }
+    .eye{ cursor:pointer; opacity:.65 }
+    .eye:hover{ opacity:1 }
+
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:10px;
+      padding:12px 14px; border-radius:12px; border:1px solid var(--bd);
+      cursor:pointer; background:#fff; transition: transform .05s ease, box-shadow .2s ease;
+    }
+    .btn:active{ transform: scale(0.985) }
+    .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff }
+    .btn.primary:hover{ background:var(--brand-600) }
+    .btn.ghost{ background:#eef0ff; color:#2b2f8f; border-color:var(--brand-200) }
+    .btn.full{ width:100% }
+
+    .divider{ display:flex; align-items:center; gap:10px; color:var(--mut); margin:8px 0 }
+    .divider::before, .divider::after{ content:""; height:1px; background:var(--bd); flex:1 }
+
+    .err{ color:var(--bad); min-height:1.2em; margin-top:8px }
+    .hint{ font-size:12px; color:var(--mut) }
+
+    .footrow{ display:flex; align-items:center; gap:10px; margin-top:8px; }
+    .footrow .right{ margin-left:auto }
+
+    .gicon{ width:18px; height:18px; display:inline-block; background:
+      url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="%234285F4" d="M24 9.5c3.5 0 6.7 1.2 9.2 3.5l6.9-6.9C35.9 2.2 30.3 0 24 0 14.6 0 6.4 5.3 2.5 13l8 6.2C12.2 13 17.6 9.5 24 9.5z"/><path fill="%2334A853" d="M46.5 24c0-1.6-.1-2.8-.4-4H24v8.1h12.7c-.6 3.2-2.5 5.9-5.2 7.7l8 6.2C43.9 38.8 46.5 31.9 46.5 24z"/><path fill="%23FBBC05" d="M10.5 28.9c-1-3-1-6.2 0-9.1l-8-6.2c-3.5 6.9-3.5 14.6 0 21.5l8-6.2z"/><path fill="%23EA4335" d="M24 47.9c6.3 0 11.7-2.1 15.6-5.9l-8-6.2c-2.2 1.5-5 2.3-7.6 2.3-6.4 0-11.8-3.5-15.5-8.7l-8 6.2C6.4 42.7 14.6 47.9 24 47.9z"/></svg>') center/contain no-repeat; }
+
+    .mini{ font-size:12px; color:var(--mut) }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="main">
+    <!-- Brand side -->
+    <aside class="brand" aria-hidden="true">
+      <div>
+        <div class="logo">
+          <div class="dot">⏰</div>
+          <div>Ponto</div>
+        </div>
+        <h2>Bem-vindo 👋</h2>
+        <p>Registre entradas, saídas e pausas. O banco de horas é calculado automaticamente com regras de 1.5× e 2×.</p>
+      </div>
+      <div class="foot">
+        <span class="badge">PWA • funciona offline</span>
+      </div>
+    </aside>
+
+    <!-- Form side -->
+    <section class="panel">
+      <div class="topbar">
+        <div class="seg" role="tablist" aria-label="Alternar modo">
+          <button id="tabLogin" class="active" role="tab" aria-selected="true">Entrar</button>
+          <button id="tabSignup" role="tab" aria-selected="false">Criar conta</button>
+        </div>
+        <div class="space"></div>
+        <button id="btnTheme" class="chip" title="Tema">🌓 Tema</button>
+      </div>
+
+      <h1 id="title">Acesse sua conta</h1>
+      <p class="muted" id="subtitle">Use e-mail e senha ou entre com o Google.</p>
+
+      <!-- LOGIN FORM -->
+      <form id="formLogin" autocomplete="on" aria-labelledby="title">
+        <div class="field">
+          <label for="lemail">E-mail</label>
+          <div class="control"><input id="lemail" type="email" inputmode="email" autocomplete="username" required placeholder="voce@empresa.com"></div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="lpass">Senha</label>
+            <div class="control">
+              <input id="lpass" type="password" autocomplete="current-password" required placeholder="••••••••">
+              <span id="lEye" class="eye" aria-label="Mostrar/ocultar senha">👁️</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button type="button" class="btn" id="btnReset">Esqueci a senha</button>
+          </div>
+        </div>
+        <button type="submit" class="btn primary full" id="btnLogin">Entrar</button>
+
+        <div class="divider"><span>ou</span></div>
+        <button type="button" class="btn ghost full" id="btnGoogle"><span class="gicon" aria-hidden="true"></span> Entrar com Google</button>
+
+        <div id="msgL" class="err"></div>
+      </form>
+
+      <!-- SIGNUP FORM -->
+      <form id="formSignup" class="hidden" autocomplete="on" aria-labelledby="title">
+        <div class="row">
+          <div class="field">
+            <label for="sname">Nome (opcional)</label>
+            <div class="control"><input id="sname" type="text" placeholder="Seu nome"></div>
+          </div>
+          <div class="field">
+            <label for="semail">E-mail</label>
+            <div class="control"><input id="semail" type="email" inputmode="email" autocomplete="email" required placeholder="voce@empresa.com"></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="spass">Senha</label>
+            <div class="control">
+              <input id="spass" type="password" autocomplete="new-password" required minlength="6" placeholder="Mínimo 6 caracteres">
+              <span id="sEye" class="eye" aria-label="Mostrar/ocultar senha">👁️</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="spass2">Confirmar senha</label>
+            <div class="control">
+              <input id="spass2" type="password" autocomplete="new-password" required placeholder="Repita a senha">
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn primary full" id="btnSignup">Criar conta</button>
+
+        <div class="divider"><span>ou</span></div>
+        <button type="button" class="btn ghost full" id="btnGoogle2"><span class="gicon" aria-hidden="true"></span> Criar com Google</button>
+
+        <div id="msgS" class="err"></div>
+        <p class="hint">Ao criar a conta, você concorda com as políticas da empresa para uso do sistema de ponto.</p>
+      </form>
+
+      <div class="footrow">
+        <span class="mini">Dica: depois de logar, admins vão para o Painel Admin; demais para o painel do colaborador.</span>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { initApp, auth, ensureRoleDoc, isAdmin } from './app.js';
+    await initApp();
+    const $ = sel => document.querySelector(sel);
+    const qs = sel => document.querySelectorAll(sel);
+
+    // Tema
+    const cur = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', cur);
+    $('#btnTheme').onclick = ()=>{
+      const now = document.documentElement.getAttribute('data-theme');
+      const next = now==='light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    };
+
+    // Alternância Entrar/Criar conta
+    const tabLogin = $('#tabLogin'), tabSignup = $('#tabSignup');
+    const formLogin = $('#formLogin'), formSignup = $('#formSignup');
+    function activate(tab){
+      const login = tab==='login';
+      tabLogin.classList.toggle('active', login);
+      tabSignup.classList.toggle('active', !login);
+      formLogin.classList.toggle('hidden', !login);
+      formSignup.classList.toggle('hidden', login);
+      $('#title').textContent = login ? 'Acesse sua conta' : 'Criar nova conta';
+      $('#subtitle').textContent = login ? 'Use e-mail e senha ou entre com o Google.' : 'Informe seus dados para começar.';
+    }
+    tabLogin.onclick = ()=> activate('login');
+    tabSignup.onclick = ()=> activate('signup');
+
+    // Mostrar/ocultar senha
+    function toggleEye(input, eye){ eye.addEventListener('click', ()=> input.type = (input.type==='password'?'text':'password')); }
+    toggleEye($('#lpass'), $('#lEye')); toggleEye($('#spass'), $('#sEye'));
+
+    // Firebase Auth
+    const mAuth = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+    const provider = new mAuth.GoogleAuthProvider();
+
+    // Redirect se já logado
+    mAuth.onAuthStateChanged(auth, async (user)=>{
+      if (user){
+        try{
+          await ensureRoleDoc(user.uid, user.displayName||'', user.email||'');
+          const admin = await isAdmin(user.uid);
+          location.href = admin ? 'index.html' : 'admin.html';
+        }catch(e){ showErr('#msgL', e); }
+      }
+    });
+
+    // Helpers UI
+    function btnBusy(btn, busy){
+      btn.disabled = !!busy; btn.style.opacity = busy ? .7 : 1;
+      btn.style.pointerEvents = busy ? 'none' : 'auto';
+    }
+    const mapErr = (e)=>{
+      const code = (e?.code||'') + '';
+      if (code.includes('user-not-found')) return 'Usuário não encontrado.';
+      if (code.includes('wrong-password')) return 'Senha incorreta.';
+      if (code.includes('invalid-email')) return 'E-mail inválido.';
+      if (code.includes('email-already-in-use')) return 'Este e-mail já está em uso.';
+      if (code.includes('weak-password')) return 'Senha fraca — mínimo 6 caracteres.';
+      if (code.includes('popup-closed-by-user')) return 'Janela fechada antes de concluir.';
+      return e?.message || 'Ocorreu um erro.';
+    };
+    function showErr(sel, e){ const el=$(sel); if(!el) return; el.textContent = mapErr(e); setTimeout(()=>{ if(el.textContent===mapErr(e)) el.textContent=''; }, 7000); }
+
+    // Login
+    formLogin.addEventListener('submit', async (ev)=>{
+      ev.preventDefault();
+      const email = $('#lemail').value.trim();
+      const pass = $('#lpass').value;
+      btnBusy($('#btnLogin'), true);
+      try{
+        await mAuth.signInWithEmailAndPassword(auth, email, pass);
+      }catch(e){ showErr('#msgL', e); }
+      btnBusy($('#btnLogin'), false);
+    });
+    $('#btnReset').onclick = async ()=>{
+      const email = $('#lemail').value.trim();
+      if(!email){ showErr('#msgL','Informe o e-mail para redefinir.'); return; }
+      try{
+        await mAuth.sendPasswordResetEmail(auth, email);
+        $('#msgL').textContent = 'Enviamos um e-mail com instruções.';
+        setTimeout(()=> $('#msgL').textContent='', 6000);
+      }catch(e){ showErr('#msgL', e); }
+    };
+    $('#btnGoogle').onclick = async ()=>{
+      btnBusy($('#btnGoogle'), true);
+      try{ await mAuth.signInWithPopup(auth, provider); }
+      catch(e){ showErr('#msgL', e); }
+      btnBusy($('#btnGoogle'), false);
+    };
+
+    // Signup
+    formSignup.addEventListener('submit', async (ev)=>{
+      ev.preventDefault();
+      const name = $('#sname').value.trim();
+      const email = $('#semail').value.trim();
+      const p1 = $('#spass').value, p2 = $('#spass2').value;
+      if (p1 !== p2) { showErr('#msgS','As senhas não coincidem.'); return; }
+      btnBusy($('#btnSignup'), true);
+      try{
+        const cred = await mAuth.createUserWithEmailAndPassword(auth, email, p1);
+        if (name) { await mAuth.updateProfile(cred.user, { displayName: name }); }
+        await ensureRoleDoc(cred.user.uid, name || cred.user.displayName || '', cred.user.email || '');
+      }catch(e){ showErr('#msgS', e); }
+      btnBusy($('#btnSignup'), false);
+    });
+    $('#btnGoogle2').onclick = async ()=>{
+      btnBusy($('#btnGoogle2'), true);
+      try{
+        const cred = await mAuth.signInWithPopup(auth, provider);
+        await ensureRoleDoc(cred.user.uid, cred.user.displayName||'', cred.user.email||'');
+      }catch(e){ showErr('#msgS', e); }
+      btnBusy($('#btnGoogle2'), false);
+    };
+  </script>
+
+  <script>
+    // PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    }
+  </script>
+</body>
+</html>
