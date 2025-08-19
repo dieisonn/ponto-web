@@ -163,14 +163,28 @@ async function writePunch({ uid, type, atDate, note, projId }){
   await batch.commit();
 }
 
-export async function addPunchAuto({ at, note='', projId=null }){
+/* ===== Criar ponto: força alternância ===== */
+export async function addPunchAuto({ at, note='' }){
   await initApp();
-  const user = auth.currentUser; if(!user) throw new Error('Não autenticado');
-  const atDate = at instanceof Date ? at : new Date();
-  await ensureStatus(user.uid);
-  const st = await getStatus(user.uid);
-  const type = (!st.hasOpen) ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida');
-  await writePunch({ uid:user.uid, type, atDate, note, projId });
+  const fs = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+  const user = auth.currentUser;
+  if (!user) throw new Error('Não autenticado');
+
+  const atDate = at instanceof Date ? new Date(at) : new Date();
+  const dayISO = dayISOfromDate(atDate);
+  const period = yyyymm(atDate);
+  const nextType = await getNextTypeFor(user.uid, dayISO); // alternância garantida
+
+  // >>> use addDoc (sempre CREATE) em vez de setDoc com ID manual <<<
+  await fs.addDoc(fs.collection(db, 'punches', user.uid, period), {
+    ts: fs.Timestamp.now(),                  // servidor
+    at: fs.Timestamp.fromDate(atDate),       // horário do cliente
+    day: dayISO,                             // chave de consulta do dia
+    email: user.email || '',
+    uid: user.uid,
+    type: nextType,
+    note: note || ''
+  });
 }
 export async function startPause({ at, note='' }){
   const user=auth.currentUser; if(!user) throw new Error('Não autenticado');
@@ -487,3 +501,4 @@ export async function getNextTypeFor(uid){
   const st = await getStatus(uid);
   return !st.hasOpen ? 'entrada' : (st.hasBreakOpen ? 'fim_pausa' : 'saida');
 }
+
